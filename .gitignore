@@ -6,3 +6,8 @@
 # Python files
 *.pyc
 *.pyo
+
+# Haskell build files
+*.hi
+*.o
+*.exe
