@@ -49,14 +49,29 @@ parsePreTokens :: Parser [PreToken]
 parsePreTokens = ptFile
 
 ptFile :: Parser [PreToken]
-ptFile = sepEndBy ptLine eol
+ptFile = concat <$> sepEndBy ptLine eol
 
-ptLine :: Parser PreToken
-ptLine = do
-    line <- many (noneOf "\n\r")
-    return (case line of
-                "" -> PTDecoration DBlankLine
-                _ -> PTContent line)
+ptLine :: Parser [PreToken]
+ptLine = ptSpacePrefix >>
+           (try ptDirective
+              <|> try ptLineContent
+              <|> return [PTDecoration DBlankLine])
+
+ptSpacePrefix :: Parser String
+ptSpacePrefix = many (oneOf " \t")
+
+-- Technically, could have comments at end of directive...
+ptDirective :: Parser [PreToken]
+ptDirective = do
+    _ <- lookAhead (char '#')
+    s <- many (noneOf "\n\r")
+    return [PTDecoration . DDirective $ s]
+
+ptLineContent :: Parser [PreToken]
+ptLineContent = listPT . PTContent <$> many1 (noneOf "\n\r")
+
+listPT :: PreToken -> [PreToken]
+listPT = (:[])
 
 eol :: Parser String
 eol = try (string "\r\n") <|> string "\r" <|> string "\n"
