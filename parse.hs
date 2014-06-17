@@ -1,4 +1,4 @@
-import Control.Applicative hiding (many)
+import Control.Applicative hiding (many, (<|>))
 import Control.Monad
 import Data.List
 import System.Directory
@@ -11,7 +11,9 @@ main :: IO ()
 main = do
     cartDir <- getEnv "CARTLIFE"
     files <- sort <$> getFiles cartDir
-    let file = head files
+    --let file = head files
+    --let file = ("parse.hs")
+    let file = (cartDir </> "AskOnly.asc")
     print file
     content <- fileContent file
     print $ cartParse content
@@ -47,10 +49,14 @@ parsePreTokens :: Parser [PreToken]
 parsePreTokens = ptFile
 
 ptFile :: Parser [PreToken]
-ptFile = concat <$> endBy ptLine eol
+ptFile = sepEndBy ptLine eol
 
-ptLine :: Parser [PreToken]
-ptLine = (:[]) . PTContent <$> many (noneOf "\n")
+ptLine :: Parser PreToken
+ptLine = do
+    line <- many (noneOf "\n\r")
+    return (case line of
+                "" -> PTDecoration DBlankLine
+                _ -> PTContent line)
 
-eol :: Parser Char
-eol = char '\n'
+eol :: Parser String
+eol = try (string "\r\n") <|> string "\r" <|> string "\n"
