@@ -13,10 +13,11 @@ main = do
     files <- sort <$> getFiles cartDir
     --let file = head files
     --let file = ("parse.hs")
-    let file = (cartDir </> "AskOnly.asc")
+    --let file = cartDir </> "AskOnly.asc"
+    let file = cartDir </> "KeyboardMovement_102.asc"
     print file
     content <- fileContent file
-    print $ cartParse content
+    print $ take 20 <$> cartParse content
     putStrLn "Hello, World!"
 
 getFiles :: FilePath -> IO [FilePath]
@@ -49,7 +50,10 @@ parsePreTokens :: Parser [PreToken]
 parsePreTokens = ptFile
 
 ptFile :: Parser [PreToken]
-ptFile = concat <$> sepEndBy ptLine eol
+ptFile = do
+    toks <- sepEndBy ptLine eol
+    _ <- eof
+    return $ concat toks
 
 ptLine :: Parser [PreToken]
 ptLine = ptSpacePrefix >>
@@ -58,20 +62,44 @@ ptLine = ptSpacePrefix >>
               <|> return [PTDecoration DBlankLine])
 
 ptSpacePrefix :: Parser String
-ptSpacePrefix = many (oneOf " \t")
+ptSpacePrefix = many (oneOf " \t\v")
 
--- Technically, could have comments at end of directive...
+-- Technically, we could have comments at end of directive, but that doesn't
+-- happen in the files of interest.
 ptDirective :: Parser [PreToken]
 ptDirective = do
     _ <- lookAhead (char '#')
     s <- many (noneOf "\n\r")
-    return [PTDecoration . DDirective $ s]
+    return [PTDecoration (DDirective s)]
 
 ptLineContent :: Parser [PreToken]
-ptLineContent = listPT . PTContent <$> many1 (noneOf "\n\r")
+ptLineContent = many (try ptLineComment <|> ptNonComment)
 
-listPT :: PreToken -> [PreToken]
-listPT = (:[])
+ptLineComment :: Parser PreToken
+ptLineComment = do
+    _ <- lookAhead ptLineCommentStart
+    s <- many (noneOf "\n\r")
+    return $ PTDecoration (DLineComment s)
+
+ptNonComment :: Parser PreToken
+ptNonComment = do
+    -- There's probably a better way to do this?
+    s <- many1Till anyChar (try (lookAhead ptLineCommentStart)
+                             -- <|> try (lookAhead ptBlockCommentStart)
+                             <|> try (lookAhead eol))
+    return $ PTContent s
+
+many1Till :: (Show end) => Parser a -> Parser end -> Parser [a]
+many1Till p end = do
+    s <- manyTill p end
+    guard (not $ null s)
+    return s
+
+ptLineCommentStart :: Parser String
+ptLineCommentStart = string "//"
+
+--ptBlockCommentStart :: Parser String
+--ptBlockCommentStart = string "/*"
 
 eol :: Parser String
 eol = try (string "\r\n") <|> string "\r" <|> string "\n"
