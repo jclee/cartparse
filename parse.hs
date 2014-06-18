@@ -14,10 +14,12 @@ main = do
     --let file = head files
     --let file = ("parse.hs")
     --let file = cartDir </> "AskOnly.asc"
-    let file = cartDir </> "KeyboardMovement_102.asc"
+    --let file = cartDir </> "KeyboardMovement_102.asc"
+    let file = cartDir </> "Parallax_ASH.asc"
     print file
     content <- fileContent file
-    print $ take 20 <$> cartParse content
+    --print $ take 20 <$> cartParse content
+    print $ cartParse content
     putStrLn "Hello, World!"
 
 getFiles :: FilePath -> IO [FilePath]
@@ -35,6 +37,7 @@ data Decoration = DLineComment String
     | DDirective String
     | DBlankLine
     | DBlockComment String
+    | DEndComment String
     | DInlineComment String
     deriving (Show)
 
@@ -58,6 +61,7 @@ ptFile = do
 ptLine :: Parser [PreToken]
 ptLine = ptSpacePrefix >>
            (try ptDirective
+              <|> try ((:[]) <$> (ptLineComment DLineComment))
               <|> try ptLineContent
               <|> return [PTDecoration DBlankLine])
 
@@ -73,13 +77,13 @@ ptDirective = do
     return [PTDecoration (DDirective s)]
 
 ptLineContent :: Parser [PreToken]
-ptLineContent = many (try ptLineComment <|> ptNonComment)
+ptLineContent = many (try (ptLineComment DEndComment) <|> ptNonComment)
 
-ptLineComment :: Parser PreToken
-ptLineComment = do
+ptLineComment :: (String -> Decoration) -> Parser PreToken
+ptLineComment decorator = do
     _ <- lookAhead ptLineCommentStart
     s <- many (noneOf "\n\r")
-    return $ PTDecoration (DLineComment s)
+    return $ PTDecoration (decorator s)
 
 ptNonComment :: Parser PreToken
 ptNonComment = do
@@ -102,4 +106,4 @@ ptLineCommentStart = string "//"
 --ptBlockCommentStart = string "/*"
 
 eol :: Parser String
-eol = try (string "\r\n") <|> string "\r" <|> string "\n"
+eol = try (string "\r\n") <|> string "\r" <|> string "\n" <?> "end of line"
