@@ -90,7 +90,7 @@ ptNonComment = do
     -- There's probably a better way to do this?
     s <- many1Till anyChar (try (lookAhead ptLineCommentStart)
                              -- <|> try (lookAhead ptBlockCommentStart)
-                             <|> try (lookAhead eol))
+                              <|> toLineEnding)
     return $ PTContent s
 
 many1Till :: (Show end) => Parser a -> Parser end -> Parser [a]
@@ -104,6 +104,9 @@ ptLineCommentStart = string "//"
 
 --ptBlockCommentStart :: Parser String
 --ptBlockCommentStart = string "/*"
+
+toLineEnding :: Parser String
+toLineEnding = try (lookAhead ((eof >> return "") <|> eol))
 
 eol :: Parser String
 eol = try (string "\r\n") <|> string "\r" <|> string "\n" <?> "end of line"
