@@ -41,7 +41,9 @@ data Decoration = DLineComment String
     | DInlineComment String
     deriving (Show)
 
-data PreToken = PTDecoration Decoration
+type PreToken = (SourcePos, PreTok)
+
+data PreTok = PTDecoration Decoration
     | PTContent String
     deriving (Show)
 
@@ -59,22 +61,23 @@ ptFile = do
     return $ concat toks
 
 ptLine :: Parser [PreToken]
-ptLine = ptSpacePrefix >>
-           (try ptDirective
-              <|> try ((:[]) <$> (ptLineComment DLineComment))
-              <|> try ptLineContent
-              <|> return [PTDecoration DBlankLine])
+ptLine = do
+    pos <- getPosition
+    _ <- ptSpacePrefix
+    (try ((:[]) <$> ptDirective)
+       <|> try ((:[]) <$> (ptLineComment DLineComment))
+       <|> try ptLineContent
+       <|> return [(pos, PTDecoration DBlankLine)])
 
 ptSpacePrefix :: Parser String
 ptSpacePrefix = many (oneOf " \t\v")
 
--- Technically, we could have comments at end of directive, but that doesn't
--- happen in the files of interest.
-ptDirective :: Parser [PreToken]
+ptDirective :: Parser PreToken
 ptDirective = do
+    pos <- getPosition
     _ <- lookAhead (char '#')
     s <- many (noneOf "\n\r")
-    return [PTDecoration (DDirective s)]
+    return (pos, PTDecoration (DDirective s))
 
 ptLineContent :: Parser [PreToken]
 ptLineContent = many (try (ptLineComment DEndComment)
@@ -83,25 +86,28 @@ ptLineContent = many (try (ptLineComment DEndComment)
 
 ptLineComment :: (String -> Decoration) -> Parser PreToken
 ptLineComment decorator = do
+    pos <- getPosition
     _ <- lookAhead ptLineCommentStart
     s <- many (noneOf "\n\r")
-    return $ PTDecoration (decorator s)
+    return $ (pos, PTDecoration (decorator s))
 
 ptBlockComment :: Parser PreToken
 ptBlockComment = do
+    pos <- getPosition
     _ <- ptBlockCommentStart
     s <- manyTill anyChar (try ptBlockCommentEnd)
-    return $ PTDecoration $ ctor s
-        where ctor s = if elem '\n' s || elem '\r' s
-                        then DBlockComment s
-                        else DInlineComment s
+    return (pos, PTDecoration $ ctor s pos)
+        where ctor s pos = if elem '\n' s || elem '\r' s
+                             then DBlockComment s
+                             else DInlineComment s
 
 ptNonComment :: Parser PreToken
 ptNonComment = do
+    pos <- getPosition
     s <- many1Till anyChar (try (lookAhead ptLineCommentStart)
                               <|> try (lookAhead ptBlockCommentStart)
                               <|> toLineEnding)
-    return $ PTContent s
+    return $ (pos, PTContent s)
 
 many1Till :: (Show end) => Parser a -> Parser end -> Parser [a]
 many1Till p end = do
