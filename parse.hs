@@ -77,7 +77,9 @@ ptDirective = do
     return [PTDecoration (DDirective s)]
 
 ptLineContent :: Parser [PreToken]
-ptLineContent = many (try (ptLineComment DEndComment) <|> ptNonComment)
+ptLineContent = many (try (ptLineComment DEndComment)
+                        <|> try ptBlockComment
+                        <|> ptNonComment)
 
 ptLineComment :: (String -> Decoration) -> Parser PreToken
 ptLineComment decorator = do
@@ -85,11 +87,19 @@ ptLineComment decorator = do
     s <- many (noneOf "\n\r")
     return $ PTDecoration (decorator s)
 
+ptBlockComment :: Parser PreToken
+ptBlockComment = do
+    _ <- ptBlockCommentStart
+    s <- manyTill anyChar (try ptBlockCommentEnd)
+    return $ PTDecoration $ ctor s
+        where ctor s = if elem '\n' s || elem '\r' s
+                        then DBlockComment s
+                        else DInlineComment s
+
 ptNonComment :: Parser PreToken
 ptNonComment = do
-    -- There's probably a better way to do this?
     s <- many1Till anyChar (try (lookAhead ptLineCommentStart)
-                             -- <|> try (lookAhead ptBlockCommentStart)
+                              <|> try (lookAhead ptBlockCommentStart)
                               <|> toLineEnding)
     return $ PTContent s
 
@@ -102,8 +112,11 @@ many1Till p end = do
 ptLineCommentStart :: Parser String
 ptLineCommentStart = string "//"
 
---ptBlockCommentStart :: Parser String
---ptBlockCommentStart = string "/*"
+ptBlockCommentStart :: Parser String
+ptBlockCommentStart = string "/*"
+
+ptBlockCommentEnd :: Parser String
+ptBlockCommentEnd = string "*/"
 
 toLineEnding :: Parser String
 toLineEnding = try (lookAhead ((eof >> return "") <|> eol))
