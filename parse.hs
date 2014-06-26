@@ -42,14 +42,27 @@ data Decoration = DLineComment String
     deriving (Show)
 
 type PreToken = (SourcePos, PreTok)
-
 data PreTok = PTDecoration Decoration
     | PTContent String
     deriving (Show)
 
+type Token = (SourcePos, Tok)
+data Tok = TString String
+    deriving (Show)
+
 -- TODO: Implement me!
-cartParse :: String -> Either ParseError [PreToken]
-cartParse s = parse parsePreTokens "(parser input)" s
+cartParse :: String -> Either ParseError [Token]
+cartParse s = do
+    preTokens <- parse parsePreTokens "(parser input)" s
+    parse scanTokens "(parser input)" preTokens
+
+type PreTokenParser a = GenParser PreToken () a
+
+scanTokens :: PreTokenParser [Token]
+scanTokens = do
+    -- TODO: Implement me!
+    pos <- getPosition
+    return [(pos, TString "x")]
 
 parsePreTokens :: Parser [PreToken]
 parsePreTokens = ptFile
