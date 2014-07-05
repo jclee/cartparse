@@ -46,8 +46,9 @@ data PreTok = PTDecoration Decoration
     | PTContent String
     deriving (Show)
 
-type Token = (SourcePos, Tok)
+type Token = (SourcePos, [Decoration], Tok)
 data Tok = TString String
+    | TEof
     deriving (Show)
 
 -- TODO: Implement me!
@@ -61,8 +62,57 @@ type PreTokenParser a = GenParser PreToken () a
 scanTokens :: PreTokenParser [Token]
 scanTokens = do
     -- TODO: Implement me!
+    --pos <- getPosition
+    --return [(pos, [], TString "x")]
+    tokens <- many (try decoratedContent)
+    eofDecs <- many leftDecoration
+    eofPos <- getPosition
+    _ <- eof
+    return $ concat tokens ++ [(eofPos, eofDecs, TEof)]
+
+decoratedContent :: PreTokenParser [Token]
+decoratedContent = do
+    lDecs <- many leftDecoration
     pos <- getPosition
-    return [(pos, TString "x")]
+    -- TODO DO NOT COMMIT - scan content
+    _ <- matchPTContent
+    rDecs <- many rightDecoration
+    -- TODO DO NOT COMMIT - associate decorators
+    return $ [(pos, lDecs ++ rDecs, TString "s")]
+
+leftDecoration :: PreTokenParser Decoration
+leftDecoration
+    = matchPreToken lDecTest
+    where
+      lDecTest (PTDecoration (DEndComment _)) = Nothing
+      lDecTest (PTDecoration d) = Just d
+      lDecTest _ = Nothing
+
+rightDecoration :: PreTokenParser Decoration
+rightDecoration
+    = matchPreToken rDecTest
+    where
+      rDecTest (PTDecoration d@(DEndComment _)) = Just d
+      rDecTest _ = Nothing
+
+matchPTContent :: PreTokenParser PreToken
+matchPTContent
+    = token showToken posToken testToken
+    where
+      showToken (_, tok) = show tok
+      posToken  (pos, _) = pos
+      testToken (pos, tok)
+        = case tok of
+            PTContent _ -> Just (pos, tok)
+            _ -> Nothing
+
+matchPreToken :: (PreTok -> Maybe a) -> PreTokenParser a
+matchPreToken test
+    = token showToken posToken testToken
+    where
+      showToken (_, tok) = show tok
+      posToken  (pos, _) = pos
+      testToken (_, tok) = test tok
 
 parsePreTokens :: Parser [PreToken]
 parsePreTokens = ptFile
@@ -109,10 +159,10 @@ ptBlockComment = do
     pos <- getPosition
     _ <- ptBlockCommentStart
     s <- manyTill anyChar (try ptBlockCommentEnd)
-    return (pos, PTDecoration $ ctor s pos)
-        where ctor s pos = if elem '\n' s || elem '\r' s
-                             then DBlockComment s
-                             else DInlineComment s
+    return (pos, PTDecoration $ ctor s)
+        where ctor s = if elem '\n' s || elem '\r' s
+                       then DBlockComment s
+                       else DInlineComment s
 
 ptNonComment :: Parser PreToken
 ptNonComment = do
