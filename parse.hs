@@ -61,24 +61,33 @@ type PreTokenParser a = GenParser PreToken () a
 
 scanTokens :: PreTokenParser [Token]
 scanTokens = do
-    -- TODO: Implement me!
-    --pos <- getPosition
-    --return [(pos, [], TString "x")]
-    tokens <- many (try decoratedContent)
+    ts <- many (try decoratedContent)
     eofDecs <- many leftDecoration
     eofPos <- getPosition
     _ <- eof
-    return $ concat tokens ++ [(eofPos, eofDecs, TEof)]
+    return $ concat ts ++ [(eofPos, eofDecs, TEof)]
 
 decoratedContent :: PreTokenParser [Token]
 decoratedContent = do
     lDecs <- many leftDecoration
-    pos <- getPosition
-    -- TODO DO NOT COMMIT - scan content
-    _ <- matchPTContent
+    content <- matchPTContent
     rDecs <- many rightDecoration
-    -- TODO DO NOT COMMIT - associate decorators
-    return $ [(pos, lDecs ++ rDecs, TString "s")]
+    let toks = scanContent content
+    return $ decorateFirst lDecs (decorateLast rDecs toks)
+
+decorateFirst :: [Decoration] -> [Token] -> [Token]
+decorateFirst decs ts = [addDecorations decs (head ts)] ++ tail ts
+
+decorateLast :: [Decoration] -> [Token] -> [Token]
+decorateLast decs ts = init ts ++ [addDecorations decs (last ts)]
+
+addDecorations :: [Decoration] -> Token -> Token
+addDecorations newDecs (pos, decs, c) = (pos, decs ++ newDecs, c)
+
+scanContent :: PreToken -> [Token]
+-- TODO - actually scan stuff
+scanContent (pos, PTContent s) = [(pos, [], TString s)]
+scanContent _ = error "Unrecognized content"
 
 leftDecoration :: PreTokenParser Decoration
 leftDecoration
