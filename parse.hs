@@ -46,48 +46,50 @@ data PreTok = PTDecoration Decoration
     | PTContent String
     deriving (Show)
 
+type DecoratedString = (SourcePos, [Decoration], [Decoration], String)
+
 type Token = (SourcePos, [Decoration], Tok)
 data Tok = TString String
     | TEof
     deriving (Show)
 
--- TODO: Implement me!
 cartParse :: String -> Either ParseError [Token]
 cartParse s = do
     preTokens <- parse parsePreTokens "(parser input)" s
-    parse scanTokens "(parser input)" preTokens
+    decoratedStrings <- parse associateDecorations "(parser input)" preTokens
+    concat <$> sequence (scanDecoratedString <$> decoratedStrings)
+    -- TODO: Implement parsing
 
 type PreTokenParser a = GenParser PreToken () a
 
-scanTokens :: PreTokenParser [Token]
-scanTokens = do
+scanDecoratedString :: DecoratedString -> Either ParseError [Token]
+scanDecoratedString (pos, lDecs, rDecs, s) = do
+    toks <- parse (scanString pos) "(parser input)" s
+    return $ decorateFirst lDecs (decorateLast rDecs toks)
+    where
+        decorateFirst decs ts = [addDecorations decs (head ts)] ++ tail ts
+        decorateLast decs ts = init ts ++ [addDecorations decs (last ts)]
+        addDecorations newDecs (pos, decs, c) = (pos, decs ++ newDecs, c)
+
+scanString :: SourcePos -> Parser [Token]
+scanString pos = do
+    -- TODO: Implement scanning
+    return [(pos, [], TString "x")]
+
+associateDecorations :: PreTokenParser [DecoratedString]
+associateDecorations = do
     ts <- many (try decoratedContent)
     eofDecs <- many leftDecoration
     eofPos <- getPosition
     _ <- eof
-    return $ concat ts ++ [(eofPos, eofDecs, TEof)]
+    return $ ts ++ [(eofPos, eofDecs, [], "")]
 
-decoratedContent :: PreTokenParser [Token]
+decoratedContent :: PreTokenParser DecoratedString
 decoratedContent = do
     lDecs <- many leftDecoration
-    content <- matchPTContent
+    (pos, content) <- matchPTContent
     rDecs <- many rightDecoration
-    let toks = scanContent content
-    return $ decorateFirst lDecs (decorateLast rDecs toks)
-
-decorateFirst :: [Decoration] -> [Token] -> [Token]
-decorateFirst decs ts = [addDecorations decs (head ts)] ++ tail ts
-
-decorateLast :: [Decoration] -> [Token] -> [Token]
-decorateLast decs ts = init ts ++ [addDecorations decs (last ts)]
-
-addDecorations :: [Decoration] -> Token -> Token
-addDecorations newDecs (pos, decs, c) = (pos, decs ++ newDecs, c)
-
-scanContent :: PreToken -> [Token]
--- TODO - actually scan stuff
-scanContent (pos, PTContent s) = [(pos, [], TString s)]
-scanContent _ = error "Unrecognized content"
+    return (pos, lDecs, rDecs, content)
 
 leftDecoration :: PreTokenParser Decoration
 leftDecoration
@@ -104,7 +106,7 @@ rightDecoration
       rDecTest (PTDecoration d@(DEndComment _)) = Just d
       rDecTest _ = Nothing
 
-matchPTContent :: PreTokenParser PreToken
+matchPTContent :: PreTokenParser (SourcePos, String)
 matchPTContent
     = token showToken posToken testToken
     where
@@ -112,7 +114,7 @@ matchPTContent
       posToken  (pos, _) = pos
       testToken (pos, tok)
         = case tok of
-            PTContent _ -> Just (pos, tok)
+            PTContent s -> Just (pos, s)
             _ -> Nothing
 
 matchPreToken :: (PreTok -> Maybe a) -> PreTokenParser a
