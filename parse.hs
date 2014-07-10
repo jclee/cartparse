@@ -1,11 +1,14 @@
 import Control.Applicative hiding (many, (<|>))
 import Control.Monad
+import Data.Functor.Identity
 import Data.List
 import System.Directory
 import System.Environment
 import System.FilePath
 import System.IO
 import Text.ParserCombinators.Parsec
+import qualified Text.ParserCombinators.Parsec.Token as P
+import Text.ParserCombinators.Parsec.Language (javaStyle)
 
 main :: IO ()
 main = do
@@ -18,8 +21,10 @@ main = do
     let file = cartDir </> "Parallax_ASH.asc"
     print file
     content <- fileContent file
-    --print $ take 20 <$> cartParse content
-    print $ cartParse content
+    let toks = cartScan content
+    dumpToks $ take 20 . filter isUnrecognized <$> toks
+    --print $ (take 20) <$> toks
+    --print toks
     putStrLn "Hello, World!"
 
 getFiles :: FilePath -> IO [FilePath]
@@ -48,17 +53,54 @@ data PreTok = PTDecoration Decoration
 
 type DecoratedString = (SourcePos, [Decoration], [Decoration], String)
 
+-- TODO DO NOT COMMIT - finish filling in tokens
 type Token = (SourcePos, [Decoration], Tok)
-data Tok = TString String
+data Tok =
+      TString String
+    | TInteger Integer
+    | XXXXXX String
+    | TMember
+    | TSemicolon
+    | TAssign
+    | TComma
+    | TLBrace
+    | TRBrace
+    | TLParen
+    | TRParen
+    | TLBracket
+    | TRBracket
+    | TIdentifier String
+    | TElse
+    | TEnum
+    | TExport
+    | TFunction
+    | TIf
+    | TImport
+    | TNew
+    | TReturn
+    | TStatic
+    | TStruct
+    | TThis
+    | TWhile
     | TEof
     deriving (Show)
 
-cartParse :: String -> Either ParseError [Token]
-cartParse s = do
+isUnrecognized :: Token -> Bool
+isUnrecognized (_, _, XXXXXX _) = True
+isUnrecognized (_, _, _) = False
+
+dumpToks :: Either ParseError [Token] -> IO ()
+dumpToks (Left err) = putStrLn $ "Scanning error: " ++ show err
+dumpToks (Right toks) = mapM_ dumpTok toks
+
+dumpTok :: Token -> IO ()
+dumpTok (pos, decs, tok) = putStrLn $ show (sourceLine pos) ++ " " ++ show tok
+
+cartScan :: String -> Either ParseError [Token]
+cartScan s = do
     preTokens <- parse parsePreTokens "(parser input)" s
     decoratedStrings <- parse associateDecorations "(parser input)" preTokens
     concat <$> sequence (scanDecoratedString <$> decoratedStrings)
-    -- TODO: Implement parsing
 
 type PreTokenParser a = GenParser PreToken () a
 
@@ -67,14 +109,95 @@ scanDecoratedString (pos, lDecs, rDecs, s) = do
     toks <- parse (scanString pos) "(parser input)" s
     return $ decorateFirst lDecs (decorateLast rDecs toks)
     where
+        decorateFirst [] ts = ts
         decorateFirst decs ts = [addDecorations decs (head ts)] ++ tail ts
+        decorateLast [] ts = ts
         decorateLast decs ts = init ts ++ [addDecorations decs (last ts)]
-        addDecorations newDecs (pos, decs, c) = (pos, decs ++ newDecs, c)
+        addDecorations newDecs (pos', decs, c) = (pos', decs ++ newDecs, c)
 
 scanString :: SourcePos -> Parser [Token]
 scanString pos = do
-    -- TODO: Implement scanning
-    return [(pos, [], TString "x")]
+    setPosition pos
+    many scanToken
+
+scanToken :: Parser Token
+scanToken = do
+    pos <- getPosition
+    tok <- scanTok
+    return (pos, [], tok)
+
+scanTok :: Parser Tok
+scanTok =
+    (reserved "else" >> return TElse)
+    <|> (reserved "enum" >> return TEnum)
+    <|> (reserved "export" >> return TExport)
+    <|> (reserved "function" >> return TFunction)
+    <|> (reserved "if" >> return TIf)
+    <|> (reserved "import" >> return TImport)
+    <|> (reserved "new" >> return TNew)
+    <|> (reserved "return" >> return TReturn)
+    <|> (reserved "static" >> return TStatic)
+    <|> (reserved "struct" >> return TStruct)
+    <|> (reserved "this" >> return TThis)
+    <|> (reserved "while" >> return TWhile)
+    <|> try (TInteger <$> integer)
+    <|> scanTokFromString "::" TMember
+    <|> scanTokFromString "=" TAssign
+    <|> scanTokFromString "," TComma
+    <|> scanTokFromString ";" TSemicolon
+    <|> scanTokFromString "{" TLBrace
+    <|> scanTokFromString "}" TRBrace
+    <|> scanTokFromString "[" TLBracket
+    <|> scanTokFromString "]" TRBracket
+    <|> scanTokFromString "(" TLParen
+    <|> scanTokFromString ")" TRParen
+    <|> TIdentifier <$> identifier
+    <|> XXXXXX <$> many1 anyChar
+
+scanTokFromString :: String -> Tok -> Parser Tok
+scanTokFromString s t = try (lexeme $ string s >> return t)
+
+-- Better signature?
+agsStyle :: P.GenLanguageDef String u Identity
+agsStyle
+    = javaStyle
+      { P.nestedComments = False
+      , P.reservedNames = [
+          "else",
+          "enum",
+          "export",
+          "function",
+          "if",
+          "import",
+          "new",
+          "return",
+          "static",
+          "struct",
+          "this",
+          "while"
+        ]
+      , P.reservedOpNames = [
+          "::", "==", "!=", "<=", ">=", "&&", "||",
+          "++", "--", "+=", "-=", "*=", "/=",
+          "=", "(", ")", "{", "}", "[", "]", ".", ",",
+          "+", "-", "/", "*",
+          "<", ">", "!", "&", "|" ]
+      }
+
+lexer :: P.GenTokenParser String u Identity
+lexer = P.makeTokenParser agsStyle
+
+lexeme :: Parser a -> Parser a
+lexeme = P.lexeme lexer
+
+reserved :: String -> Parser ()
+reserved = P.reserved lexer
+
+identifier :: Parser String
+identifier = P.identifier lexer
+
+integer :: Parser Integer
+integer = P.integer lexer
 
 associateDecorations :: PreTokenParser [DecoratedString]
 associateDecorations = do
