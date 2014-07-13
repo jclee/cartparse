@@ -14,18 +14,18 @@ main :: IO ()
 main = do
     cartDir <- getEnv "CARTLIFE"
     files <- sort <$> getFiles cartDir
-    --let file = head files
-    --let file = ("parse.hs")
+    mapM_ parseFile files
     --let file = cartDir </> "AskOnly.asc"
     --let file = cartDir </> "KeyboardMovement_102.asc"
-    let file = cartDir </> "Parallax_ASH.asc"
+    --let file = cartDir </> "Parallax_ASH.asc"
+    --parseFile file
+
+parseFile :: String -> IO ()
+parseFile file = do
     print file
     content <- fileContent file
     let toks = cartScan content
     dumpToks $ take 20 . filter isUnrecognized <$> toks
-    --print $ (take 20) <$> toks
-    --print toks
-    putStrLn "Hello, World!"
 
 getFiles :: FilePath -> IO [FilePath]
 getFiles p = filterM doesFileExist =<< getRelDirectoryContents p
@@ -53,16 +53,36 @@ data PreTok = PTDecoration Decoration
 
 type DecoratedString = (SourcePos, [Decoration], [Decoration], String)
 
--- TODO DO NOT COMMIT - finish filling in tokens
 type Token = (SourcePos, [Decoration], Tok)
 data Tok =
       TString String
     | TInteger Integer
+    | TFloat Double
     | XXXXXX String
     | TMember
     | TSemicolon
     | TAssign
     | TComma
+    | TDot
+    | TEq
+    | TNeq
+    | TLt
+    | TGt
+    | TLtEq
+    | TGtEq
+    | TPlus
+    | TMinus
+    | TDiv
+    | TMult
+    | TNot
+    | TBinAnd
+    | TBinOr
+    | TLogAnd
+    | TLogOr
+    | TPlusEq
+    | TMinusEq
+    | TMultEq
+    | TDivEq
     | TLBrace
     | TRBrace
     | TLParen
@@ -105,9 +125,12 @@ cartScan s = do
 type PreTokenParser a = GenParser PreToken () a
 
 scanDecoratedString :: DecoratedString -> Either ParseError [Token]
+scanDecoratedString (pos, lDecs, rDecs, "") = Right [(pos, lDecs ++ rDecs, TEof)]
 scanDecoratedString (pos, lDecs, rDecs, s) = do
     toks <- parse (scanString pos) "(parser input)" s
-    return $ decorateFirst lDecs (decorateLast rDecs toks)
+    case toks of
+        [] -> fail (show pos ++ "empty tok list")
+        _ -> return $ decorateFirst lDecs (decorateLast rDecs toks)
     where
         decorateFirst [] ts = ts
         decorateFirst decs ts = [addDecorations decs (head ts)] ++ tail ts
@@ -141,9 +164,31 @@ scanTok =
     <|> (reserved "this" >> return TThis)
     <|> (reserved "while" >> return TWhile)
     <|> try (TInteger <$> integer)
+    <|> try (TFloat <$> float)
+    <|> try (TString <$> stringLiteral)
+    <|> scanTokFromString "&&" TLogAnd
+    <|> scanTokFromString "||" TLogOr
+    <|> scanTokFromString "==" TEq
+    <|> scanTokFromString "!=" TNeq
+    <|> scanTokFromString "<=" TLtEq
+    <|> scanTokFromString ">=" TGtEq
+    <|> scanTokFromString "+=" TPlusEq
+    <|> scanTokFromString "-=" TMinusEq
+    <|> scanTokFromString "*=" TMultEq
+    <|> scanTokFromString "/=" TDivEq
     <|> scanTokFromString "::" TMember
+    <|> scanTokFromString "<" TLt
+    <|> scanTokFromString ">" TGt
+    <|> scanTokFromString "+" TPlus
+    <|> scanTokFromString "-" TMinus
+    <|> scanTokFromString "/" TDiv
+    <|> scanTokFromString "*" TMult
+    <|> scanTokFromString "!" TNot
+    <|> scanTokFromString "&" TBinAnd
+    <|> scanTokFromString "|" TBinOr
     <|> scanTokFromString "=" TAssign
     <|> scanTokFromString "," TComma
+    <|> scanTokFromString "." TDot
     <|> scanTokFromString ";" TSemicolon
     <|> scanTokFromString "{" TLBrace
     <|> scanTokFromString "}" TRBrace
@@ -152,6 +197,7 @@ scanTok =
     <|> scanTokFromString "(" TLParen
     <|> scanTokFromString ")" TRParen
     <|> TIdentifier <$> identifier
+    -- TODO - remove:
     <|> XXXXXX <$> many1 anyChar
 
 scanTokFromString :: String -> Tok -> Parser Tok
@@ -176,12 +222,6 @@ agsStyle
           "this",
           "while"
         ]
-      , P.reservedOpNames = [
-          "::", "==", "!=", "<=", ">=", "&&", "||",
-          "++", "--", "+=", "-=", "*=", "/=",
-          "=", "(", ")", "{", "}", "[", "]", ".", ",",
-          "+", "-", "/", "*",
-          "<", ">", "!", "&", "|" ]
       }
 
 lexer :: P.GenTokenParser String u Identity
@@ -193,11 +233,20 @@ lexeme = P.lexeme lexer
 reserved :: String -> Parser ()
 reserved = P.reserved lexer
 
+reservedOp :: String -> Parser ()
+reservedOp = P.reservedOp lexer
+
 identifier :: Parser String
 identifier = P.identifier lexer
 
 integer :: Parser Integer
 integer = P.integer lexer
+
+float :: Parser Double
+float = P.float lexer
+
+stringLiteral :: Parser String
+stringLiteral = P.stringLiteral lexer
 
 associateDecorations :: PreTokenParser [DecoratedString]
 associateDecorations = do
