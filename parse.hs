@@ -25,7 +25,7 @@ parseFile file = do
     print file
     content <- fileContent file
     let toks = cartScan content
-    dumpToks $ take 20 . filter isUnrecognized <$> toks
+    dumpToks $ take 20 <$> toks
 
 getFiles :: FilePath -> IO [FilePath]
 getFiles p = filterM doesFileExist =<< getRelDirectoryContents p
@@ -58,7 +58,6 @@ data Tok =
       TString String
     | TInteger Integer
     | TFloat Double
-    | XXXXXX String
     | TMember
     | TSemicolon
     | TAssign
@@ -104,10 +103,6 @@ data Tok =
     | TWhile
     | TEof
     deriving (Show)
-
-isUnrecognized :: Token -> Bool
-isUnrecognized (_, _, XXXXXX _) = True
-isUnrecognized (_, _, _) = False
 
 dumpToks :: Either ParseError [Token] -> IO ()
 dumpToks (Left err) = putStrLn $ "Scanning error: " ++ show err
@@ -197,8 +192,6 @@ scanTok =
     <|> scanTokFromString "(" TLParen
     <|> scanTokFromString ")" TRParen
     <|> TIdentifier <$> identifier
-    -- TODO - remove:
-    <|> XXXXXX <$> many1 anyChar
 
 scanTokFromString :: String -> Tok -> Parser Tok
 scanTokFromString s t = try (lexeme $ string s >> return t)
