@@ -25,7 +25,9 @@ parseFile file = do
     print file
     content <- fileContent file
     let toks = cartScan content
-    dumpToks $ take 20 <$> toks
+    let ast = parse cartParse "(parser input)" <$> toks
+    --dumpToks $ take 20 <$> toks
+    print ast
 
 getFiles :: FilePath -> IO [FilePath]
 getFiles p = filterM doesFileExist =<< getRelDirectoryContents p
@@ -104,6 +106,18 @@ data Tok =
     | TEof
     deriving (Show)
 
+data Ast = FunDec Token
+    deriving (Show)
+
+type TokenParser a = GenParser Token () a
+type PreTokenParser a = GenParser PreToken () a
+
+cartParse :: TokenParser Ast
+cartParse = do
+    -- TODO: Do something better
+    pos <- getPosition
+    return $ FunDec (pos,[],TFunction)
+
 dumpToks :: Either ParseError [Token] -> IO ()
 dumpToks (Left err) = putStrLn $ "Scanning error: " ++ show err
 dumpToks (Right toks) = mapM_ dumpTok toks
@@ -116,8 +130,6 @@ cartScan s = do
     preTokens <- parse parsePreTokens "(parser input)" s
     decoratedStrings <- parse associateDecorations "(parser input)" preTokens
     concat <$> sequence (scanDecoratedString <$> decoratedStrings)
-
-type PreTokenParser a = GenParser PreToken () a
 
 scanDecoratedString :: DecoratedString -> Either ParseError [Token]
 scanDecoratedString (pos, lDecs, rDecs, "") = Right [(pos, lDecs ++ rDecs, TEof)]
