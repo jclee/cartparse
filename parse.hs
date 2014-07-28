@@ -264,7 +264,8 @@ associateDecorations = do
 decoratedContent :: PreTokenParser DecoratedString
 decoratedContent = do
     lDecs <- many leftDecoration
-    (pos, content) <- matchPTContent
+    pos <- getPosition
+    content <- matchPTContent
     rDecs <- many rightDecoration
     return (pos, lDecs, rDecs, content)
 
@@ -283,16 +284,12 @@ rightDecoration
       rDecTest (PTDecoration d@(DEndComment _)) = Just d
       rDecTest _ = Nothing
 
-matchPTContent :: PreTokenParser (SourcePos, String)
+matchPTContent :: PreTokenParser String
 matchPTContent
-    = token showToken posToken testToken
+    = matchPreToken contentTest
     where
-      showToken (_, tok) = show tok
-      posToken  (pos, _) = pos
-      testToken (pos, tok)
-        = case tok of
-            PTContent s -> Just (pos, s)
-            _ -> Nothing
+      contentTest (PTContent s) = Just s
+      contentTest _ = Nothing
 
 matchPreToken :: (PreTok -> Maybe a) -> PreTokenParser a
 matchPreToken test
