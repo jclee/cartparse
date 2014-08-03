@@ -25,15 +25,15 @@ parseFile file = do
     print file
     content <- fileContent file
     let toks = cartScan content
-    let ast = parse cartParse "(parser input)" <$> toks
-    --dumpToks $ take 20 <$> toks
+    let ast = parse cartParse "(parser input)" =<< toks
+    -- dumpToks $ take 200 <$> toks
     print ast
 
 getFiles :: FilePath -> IO [FilePath]
 getFiles p = filterM doesFileExist =<< getRelDirectoryContents p
 
 getRelDirectoryContents :: FilePath -> IO [FilePath]
-getRelDirectoryContents p = map (p </>) `liftM` getDirectoryContents p
+getRelDirectoryContents p = map (p </>) <$> getDirectoryContents p
 
 fileContent :: FilePath -> IO String
 fileContent p = do
@@ -60,6 +60,8 @@ data Tok =
       TString String
     | TInteger Integer
     | TFloat Double
+    | TTrue
+    | TFalse
     | TMember
     | TSemicolon
     | TAssign
@@ -104,9 +106,84 @@ data Tok =
     | TThis
     | TWhile
     | TEof
+    deriving (Eq)
+
+instance Show Tok where
+    show (TString s) = "string \"" ++ show s ++ "\""
+    show (TInteger i) = "integer \"" ++ show i ++ "\""
+    show (TFloat d) = "double \"" ++ show d ++ "\""
+    show TTrue = "true"
+    show TFalse = "false"
+    show TMember = "::"
+    show TSemicolon = ";"
+    show TAssign = "="
+    show TComma = ","
+    show TDot = "."
+    show TEq = "=="
+    show TNeq = "!="
+    show TLt = "<"
+    show TGt = ">"
+    show TLtEq = "<="
+    show TGtEq = ">="
+    show TPlus = "+"
+    show TMinus = "-"
+    show TDiv = "/"
+    show TMult = "*"
+    show TNot = "!"
+    show TBinAnd = "&"
+    show TBinOr = "|"
+    show TLogAnd = "&&"
+    show TLogOr = "||"
+    show TPlusEq = "+="
+    show TMinusEq = "-="
+    show TMultEq = "*="
+    show TDivEq = "/="
+    show TLBrace = "{"
+    show TRBrace = "}"
+    show TLParen = "("
+    show TRParen = ")"
+    show TLBracket = "["
+    show TRBracket = "]"
+    show (TIdentifier s) = "identifier \"" ++ show s ++ "\""
+    show TElse = "else"
+    show TEnum = "enum"
+    show TExport = "export"
+    show TFunction = "function"
+    show TIf = "if"
+    show TImport = "import"
+    show TNew = "new"
+    show TReturn = "return"
+    show TStatic = "static"
+    show TStruct = "struct"
+    show TThis = "this"
+    show TWhile = "while"
+    show TEof = "EOF"
+
+type Ast = [ATopLevel]
+
+-- TODO DO NOT COMMIT - need to preserve constituent token decorations...
+data ATopLevel =
+    AVarDec { avdTypename :: String
+            , avdVars :: [AVarInit]
+            }
     deriving (Show)
 
-data Ast = FunDec Token
+data AVarInit =
+    AVarInit { aviId :: String
+             , aviSubscripts :: [AVarSubscript]
+             , aviInit :: Maybe AExpr
+             }
+    deriving (Show)
+
+data AVarSubscript =
+    AVSEmpty
+    | AVSId String
+    | AVSInt Integer
+    deriving (Show)
+
+data AExpr =
+    AFalse
+    | ATrue
     deriving (Show)
 
 type TokenParser a = GenParser Token () a
@@ -114,9 +191,217 @@ type PreTokenParser a = GenParser PreToken () a
 
 cartParse :: TokenParser Ast
 cartParse = do
-    -- TODO: Do something better
-    pos <- getPosition
-    return $ FunDec (pos,[],TFunction)
+    topLevels <- many pTopLevel
+    eof
+    return topLevels
+
+pTopLevel :: TokenParser ATopLevel
+pTopLevel =
+    pVarDec
+    <?> "toplevel declaration"
+
+pVarDec :: TokenParser ATopLevel
+pVarDec = do
+    typename <- pIdentifier
+    vars <- sepBy1 pVarInit pComma
+    pSemicolon
+    return $ AVarDec { avdTypename=typename, avdVars=vars }
+    <?> "variable declaration"
+
+pVarInit :: TokenParser AVarInit
+pVarInit = do
+    id <- pIdentifier
+    subscripts <- many (between pLBracket pRBracket pInitSubscript)
+    init <- option Nothing (Just <$> (pAssign >> pExpr))
+    return $ AVarInit { aviId=id, aviSubscripts=subscripts, aviInit=init }
+
+pInitSubscript :: TokenParser AVarSubscript
+pInitSubscript = do
+    (AVSId <$> pIdentifier)
+    <|> (AVSInt <$> pInteger)
+    <|> return AVSEmpty
+
+pExpr :: TokenParser AExpr
+pExpr =
+    (pTrue >> return ATrue)
+    <|> (pFalse >> return AFalse)
+    <?> "expression"
+
+pInteger :: TokenParser Integer
+pInteger =
+    matchToken test
+    where
+      test (TInteger i) = Just i
+      test _ = Nothing
+
+pIdentifier :: TokenParser String
+pIdentifier =
+    matchToken test
+    where
+      test (TIdentifier s) = Just s
+      test _ = Nothing
+
+pAssign :: TokenParser ()
+pAssign = matchToken' TAssign
+
+pComma :: TokenParser ()
+pComma = matchToken' TComma
+
+pFalse :: TokenParser ()
+pFalse = matchToken' TFalse
+
+pLBracket :: TokenParser ()
+pLBracket = matchToken' TLBracket
+
+pRBracket :: TokenParser ()
+pRBracket = matchToken' TRBracket
+
+pSemicolon :: TokenParser ()
+pSemicolon = matchToken' TSemicolon
+
+pTrue :: TokenParser ()
+pTrue = matchToken' TTrue
+
+{-
+TODO DO NOT COMMIT - convert to code
+
+toplevel
+  - function
+  - vardec
+  - enum
+  - struct
+  - export
+  - import
+
+export
+  - "export" id ";"
+
+import
+  - "import"
+    - functionsig ";"
+    - vardec
+
+function
+  - functionsig block
+
+functionsig
+  - "static"? ("function" | id) id ("::" id) paramdec
+
+paramdecs
+  - "(" (paramdec ("," paramdec)*)? ")"
+
+paramdec
+  - "this" id "*"
+  - typename varinit
+
+block
+  - "{" command* "}"
+
+command
+  - if
+  - while
+  - return
+  - vardec
+  - exprcommand ";"
+  - block
+  - expr ";" (might not be necessary?)
+
+if
+  - "if" "(" expr ")" command ("else" command)?
+
+while
+  - "while" "(" expr ")" command
+
+return
+  - "return" expr? ";"
+
+vardec
+  - typename varinit ("," varinit)* ";"
+
+varinit
+  - id ("[" (int | id)? "]")* ("=" expr)
+
+enum
+  - "enum" id "{" (id ("," id)*)? "}"
+
+struct
+  - "struct" id "{" (vardec | import)* "}" ";"
+
+expr
+  - assignexpr
+
+assign_expr
+  - logicalorexpr ("=" | "+=" | "-=" | "*=" | "/=" assign_expr)?
+
+logicalorexpr
+  - logicalandexpr ("||" logicalorexpr)?
+
+logicalandexpr
+  - binorexpr ("&&" logicalandexpr)?
+
+binorexpr
+  - binandexpr ("|" binorexpr)?
+
+binandexpr
+  - eqexpr ("&" binandexpr)?
+
+eqexpr
+  - relationalexpr (("==" | "!=") eqexpr)?
+
+relationalexpr
+  - addexpr (("<" | ">" | "<=" | ">=") relationalexpr)?
+
+addexpr
+  - multexpr (("+" | "-")? addexpr)?
+
+multexpr
+  - castexpr (("*" | "/")? multexpr)?
+
+castexpr
+  - unaryexpr
+  - "(" unaryexpr ")"
+  - "(" typename ")"
+
+unaryexpr
+  - ("++" | "--" | "+" | "-" | "&" | "*" | "!") unaryexpr
+  - postfixexpr
+
+postfixexpr
+  - primaryexpr
+    - "[" expr "]"
+    - callparams
+    - "." id
+    - "++"
+    - "--"
+
+primaryexpr
+  - "(" expr ")"
+  - float
+  - int
+  - string
+  - "this"
+  - "new" typename "[" expr "]"
+
+callparams
+  - "(" (expr ("," expr)*)? ")"
+
+typename
+  - "*"? id
+
+-}
+
+matchToken' :: Tok -> TokenParser ()
+matchToken' tok = do
+    _ <- matchToken (\t -> if t == tok then Just t else Nothing)
+    return ()
+
+matchToken :: (Tok -> Maybe a) -> TokenParser a
+matchToken test
+    = token showToken posToken testToken
+    where
+      showToken (_, _, tok) = show tok
+      posToken  (pos, _, _) = pos
+      testToken (_, _, tok) = test tok
 
 dumpToks :: Either ParseError [Token] -> IO ()
 dumpToks (Left err) = putStrLn $ "Scanning error: " ++ show err
@@ -161,6 +446,7 @@ scanTok =
     (reserved "else" >> return TElse)
     <|> (reserved "enum" >> return TEnum)
     <|> (reserved "export" >> return TExport)
+    <|> (reserved "false" >> return TFalse)
     <|> (reserved "function" >> return TFunction)
     <|> (reserved "if" >> return TIf)
     <|> (reserved "import" >> return TImport)
@@ -168,6 +454,7 @@ scanTok =
     <|> (reserved "return" >> return TReturn)
     <|> (reserved "static" >> return TStatic)
     <|> (reserved "struct" >> return TStruct)
+    <|> (reserved "true" >> return TTrue)
     <|> (reserved "this" >> return TThis)
     <|> (reserved "while" >> return TWhile)
     <|> try (TInteger <$> integer)
@@ -217,6 +504,7 @@ agsStyle
           "else",
           "enum",
           "export",
+          "false",
           "function",
           "if",
           "import",
@@ -225,6 +513,7 @@ agsStyle
           "static",
           "struct",
           "this",
+          "true",
           "while"
         ]
       }
