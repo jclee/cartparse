@@ -202,7 +202,7 @@ data AFunctionDecParam =
         afdepName :: String
     }
     | AFunctionDecRegularParam {
-        afdrpName :: String
+        afdrpTypeName :: ATypeName
       , afdrpVarInit :: AVarInit
     }
     deriving (Show)
@@ -214,7 +214,7 @@ data ABlock =
 
 data AVarDec =
     AVarDec {
-        avdTypename :: String
+        avdTypeName :: ATypeName
       , avdVars :: [AVarInit]
     }
     deriving (Show)
@@ -236,6 +236,13 @@ data AVarSubscript =
 data AExpr =
     AFalse
     | ATrue
+    deriving (Show)
+
+data ATypeName =
+    ATypeName {
+        atnName :: String
+      , atnIsPointer :: Bool
+    }
     deriving (Show)
 
 type TokenParser a = GenParser Token () a
@@ -336,10 +343,10 @@ pFunctionDecExtenderParam = do
 
 pFunctionDecRegularParam :: TokenParser AFunctionDecParam
 pFunctionDecRegularParam = do
-    name <- pIdentifier
+    typeName <- pTypeName
     varInit <- pVarInit
     return AFunctionDecRegularParam {
-        afdrpName=name
+        afdrpTypeName=typeName
       , afdrpVarInit=varInit
     }
 
@@ -359,10 +366,10 @@ pTopLevelVarDec = ATopLevelVarDec <$> pVarDec
 
 pVarDec :: TokenParser AVarDec
 pVarDec = do
-    typename <- pIdentifier
+    typeName <- pTypeName
     vars <- sepBy1 pVarInit pComma
     pSemicolon
-    return $ AVarDec { avdTypename=typename, avdVars=vars }
+    return $ AVarDec { avdTypeName=typeName, avdVars=vars }
     <?> "variable declaration"
 
 pVarInit :: TokenParser AVarInit
@@ -388,6 +395,13 @@ pExpr =
     (pTrue >> return ATrue)
     <|> (pFalse >> return AFalse)
     <?> "expression"
+
+pTypeName :: TokenParser ATypeName
+pTypeName = do
+    isPointer <- option False (pMult >> return True)
+    name <- pIdentifier
+    return ATypeName { atnName=name, atnIsPointer=isPointer }
+    <?> "type name"
 
 pInteger :: TokenParser Integer
 pInteger =
