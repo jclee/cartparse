@@ -207,9 +207,23 @@ data AFunctionDecParam =
     }
     deriving (Show)
 
-data ABlock =
-    ABlock {
+data ABlock = ABlock [ACommand]
+    deriving (Show)
+
+data ACommand =
+    AIfCommand {
+        aicTestExpr :: AExpr
+      , aicTrueCommand :: ACommand
+      , aicFalseCommand :: Maybe ACommand
     }
+    | AWhileCommand {
+          awcTestExpr :: AExpr
+        , awcCommand :: ACommand
+      }
+    | AReturnCommand (Maybe AExpr)
+    | AVarDecCommand AVarDec
+    | AExprCommand AExpr
+    | ABlockCommand ABlock
     deriving (Show)
 
 data AVarDec =
@@ -236,6 +250,40 @@ data AVarSubscript =
 data AExpr =
     AFalse
     | ATrue
+    | AThisExpr
+    | ANewExpr {
+          aneTypeName :: ATypeName
+        , aneSizeExpr :: AExpr
+      }
+    | AFloatExpr Double
+    | AIntExpr Integer
+    | AStringExpr String
+    | ACallExpr {
+          aceFunctionExpr :: AExpr
+        , aceParams :: [AExpr]
+      }
+    | AMemberExpr {
+          ameExpr :: AExpr
+        , ameMember :: String
+      }
+    | AUnaryOpExpr {
+          auoeExpr :: AExpr
+        , auoeOp :: String
+      }
+    | APostOpExpr {
+          apoeExpr :: AExpr
+        , apoeOp :: String
+      }
+    | ABinOpExpr {
+          aboeExpr1 :: AExpr
+        , aboeExpr2 :: AExpr
+        , aboeOp :: String
+      }
+    | AParenExpr AExpr
+    | ACastExpr {
+          aceTypeName :: ATypeName
+        , aceCastExpr :: AExpr
+      }
     deriving (Show)
 
 data ATypeName =
@@ -374,10 +422,10 @@ pVarDec = do
 
 pVarInit :: TokenParser AVarInit
 pVarInit = do
-    id <- pIdentifier
+    ident <- pIdentifier
     subscripts <- many (between pLBracket pRBracket pInitSubscript)
-    init <- option Nothing (Just <$> (pAssign >> pExpr))
-    return $ AVarInit { aviId=id, aviSubscripts=subscripts, aviInit=init }
+    varInit <- option Nothing (Just <$> (pAssign >> pExpr))
+    return $ AVarInit { aviId=ident, aviSubscripts=subscripts, aviInit=varInit }
 
 pInitSubscript :: TokenParser AVarSubscript
 pInitSubscript = do
@@ -386,9 +434,66 @@ pInitSubscript = do
     <|> return AVSEmpty
 
 pBlock :: TokenParser ABlock
-pBlock =
-    return ABlock { }
-    <?> "Block command"
+pBlock = do
+    commands <- between pLBrace pRBrace (many pCommand)
+    return $ ABlock commands
+    <?> "block of commands"
+
+pCommand :: TokenParser ACommand
+pCommand =
+    pIfCommand
+    <|> pWhileCommand
+    <|> pReturnCommand
+    <|> pVarDecCommand
+    <|> pExprCommand
+    <|> pBlockCommand
+    <?> "command";
+
+pIfCommand :: TokenParser ACommand
+pIfCommand = do
+    _ <- pIf
+    testExpr <- between pLParen pRParen pExpr
+    trueCommand <- pCommand
+    falseCommand <- option Nothing (Just <$> (pElseCommand))
+    return AIfCommand {
+        aicTestExpr=testExpr
+      , aicTrueCommand=trueCommand
+      , aicFalseCommand=falseCommand
+    }
+
+pElseCommand :: TokenParser ACommand
+pElseCommand = do
+    _ <- pElse
+    pCommand
+
+pWhileCommand :: TokenParser ACommand
+pWhileCommand = do
+    _ <- pWhile
+    testExpr <- between pLParen pRParen pExpr
+    command <- pCommand
+    return AWhileCommand {
+        awcTestExpr=testExpr
+      , awcCommand=command
+    }
+
+pReturnCommand :: TokenParser ACommand
+pReturnCommand = do
+    _ <- pReturn
+    expr <- option Nothing (Just <$> pExpr)
+    _ <- pSemicolon
+    return $ AReturnCommand expr
+
+pVarDecCommand :: TokenParser ACommand
+pVarDecCommand = AVarDecCommand <$> pVarDec
+
+pExprCommand :: TokenParser ACommand
+pExprCommand = do
+    expr <- pExpr
+    _ <- pSemicolon
+    return $ AExprCommand expr
+
+pBlockCommand :: TokenParser ACommand
+pBlockCommand = ABlockCommand <$> pBlock
 
 pExpr :: TokenParser AExpr
 pExpr =
@@ -423,6 +528,9 @@ pAssign = matchToken' TAssign
 pComma :: TokenParser ()
 pComma = matchToken' TComma
 
+pElse :: TokenParser ()
+pElse = matchToken' TElse
+
 pEnum :: TokenParser ()
 pEnum = matchToken' TEnum
 
@@ -437,6 +545,9 @@ pFalse = matchToken' TFalse
 
 pFunction :: TokenParser ()
 pFunction = matchToken' TFunction
+
+pIf :: TokenParser ()
+pIf = matchToken' TIf
 
 pImport :: TokenParser ()
 pImport = matchToken' TImport
@@ -459,6 +570,9 @@ pRBrace = matchToken' TRBrace
 pRBracket :: TokenParser ()
 pRBracket = matchToken' TRBracket
 
+pReturn :: TokenParser ()
+pReturn = matchToken' TReturn
+
 pRParen :: TokenParser ()
 pRParen = matchToken' TRParen
 
@@ -476,6 +590,9 @@ pThis = matchToken' TThis
 
 pTrue :: TokenParser ()
 pTrue = matchToken' TTrue
+
+pWhile :: TokenParser ()
+pWhile = matchToken' TWhile
 
 {-
 TODO DO NOT COMMIT - convert to code
@@ -517,9 +634,11 @@ command
   - while
   - return
   - vardec
-  - exprcommand ";"
+  - exprcommand
   - block
-  - expr ";" (might not be necessary?)
+
+exprcommand
+  - expr ";"
 
 if
   - "if" "(" expr ")" command ("else" command)?
@@ -574,10 +693,9 @@ multexpr
 
 castexpr
   - unaryexpr
-  - "(" unaryexpr ")"
   - "(" typename ")"
 
-unaryexpr
+naryexpr
   - ("++" | "--" | "+" | "-" | "&" | "*" | "!") unaryexpr
   - postfixexpr
 
