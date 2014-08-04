@@ -169,14 +169,23 @@ data ATopLevel =
         afdSignature :: AFunctionSignature
       , afdBlock :: ABlock
     }
-    | AVarDec {
-        avdTypename :: String
-      , avdVars :: [AVarInit]
-    }
+    | ATopLevelVarDec AVarDec
     | AEnumDec {
         aedName :: String
       , aedValues :: [String]
     }
+    | AStructDec {
+        asdName :: String
+      , asdMembers :: [Either AImportDec AVarDec]
+    }
+    | AExportDec {
+        axdName :: String
+    }
+    deriving (Show)
+
+data AImportDec =
+    AImportFunctionDec AFunctionSignature
+    | AImportVarDec AVarDec
     deriving (Show)
 
 data AFunctionSignature =
@@ -200,6 +209,13 @@ data AFunctionDecParam =
 
 data ABlock =
     ABlock {
+    }
+    deriving (Show)
+
+data AVarDec =
+    AVarDec {
+        avdTypename :: String
+      , avdVars :: [AVarInit]
     }
     deriving (Show)
 
@@ -234,9 +250,50 @@ cartParse = do
 pTopLevel :: TokenParser ATopLevel
 pTopLevel =
     (try pFunctionDec)
-    <|> (try pVarDec)
+    <|> (try pEnumDec)
+    <|> (try pStructDec)
+    <|> (try pTopLevelVarDec)
+    <|> (try pExportDec)
     <|> (pEof >> return AEof)
     <?> "toplevel declaration"
+
+pStructDec :: TokenParser ATopLevel
+pStructDec = do
+    _ <- pStruct
+    name <- pIdentifier
+    members <- between pLBrace pRBrace (many pStructDecMember)
+    _ <- pSemicolon
+    return AStructDec {
+        asdName=name
+      , asdMembers=members
+    }
+
+pStructDecMember :: TokenParser (Either AImportDec AVarDec)
+pStructDecMember =
+    (try $ Left <$> pImportDec)
+    <|> (Right <$> pVarDec)
+    <?> "structure member"
+
+pExportDec :: TokenParser ATopLevel
+pExportDec = do
+    _ <- pExport
+    name <- pIdentifier
+    _ <- pSemicolon
+    return AExportDec { axdName=name }
+
+pImportDec :: TokenParser AImportDec
+pImportDec = do
+    _ <- pImport
+    (try pImportFunctionDec) <|> pImportVarDec
+
+pImportFunctionDec :: TokenParser AImportDec
+pImportFunctionDec = do
+    functionSig <- pFunctionSignature
+    _ <- pSemicolon
+    return $ AImportFunctionDec functionSig
+
+pImportVarDec :: TokenParser AImportDec
+pImportVarDec = AImportVarDec <$> pVarDec
 
 pFunctionDec :: TokenParser ATopLevel
 pFunctionDec = do
@@ -290,14 +347,17 @@ pEnumDec :: TokenParser ATopLevel
 pEnumDec = do
     _ <- pEnum
     name <- pIdentifier
-    values <- between pLBracket pRBracket (sepBy1 pIdentifier pComma)
+    values <- between pLBrace pRBrace (sepBy1 pIdentifier pComma)
     _ <- pSemicolon
     return AEnumDec {
         aedName=name
       , aedValues=values
     }
 
-pVarDec :: TokenParser ATopLevel
+pTopLevelVarDec :: TokenParser ATopLevel
+pTopLevelVarDec = ATopLevelVarDec <$> pVarDec
+
+pVarDec :: TokenParser AVarDec
 pVarDec = do
     typename <- pIdentifier
     vars <- sepBy1 pVarInit pComma
@@ -355,11 +415,20 @@ pEnum = matchToken' TEnum
 pEof :: TokenParser ()
 pEof = matchToken' TEof
 
+pExport :: TokenParser ()
+pExport = matchToken' TExport
+
 pFalse :: TokenParser ()
 pFalse = matchToken' TFalse
 
 pFunction :: TokenParser ()
 pFunction = matchToken' TFunction
+
+pImport :: TokenParser ()
+pImport = matchToken' TImport
+
+pLBrace :: TokenParser ()
+pLBrace = matchToken' TLBrace
 
 pLBracket :: TokenParser ()
 pLBracket = matchToken' TLBracket
@@ -369,6 +438,9 @@ pLParen = matchToken' TLParen
 
 pMult :: TokenParser ()
 pMult = matchToken' TMult
+
+pRBrace :: TokenParser ()
+pRBrace = matchToken' TRBrace
 
 pRBracket :: TokenParser ()
 pRBracket = matchToken' TRBracket
@@ -381,6 +453,9 @@ pSemicolon = matchToken' TSemicolon
 
 pStatic :: TokenParser ()
 pStatic = matchToken' TStatic
+
+pStruct :: TokenParser ()
+pStruct = matchToken' TStruct
 
 pThis :: TokenParser ()
 pThis = matchToken' TThis
