@@ -2,6 +2,7 @@ import Control.Applicative hiding (many, (<|>))
 import Control.Monad
 import Data.Functor.Identity
 import Data.List
+import Data.Maybe
 import System.Directory
 import System.Environment
 import System.FilePath
@@ -163,16 +164,51 @@ type Ast = [ATopLevel]
 
 -- TODO DO NOT COMMIT - need to preserve constituent token decorations...
 data ATopLevel =
-    AVarDec { avdTypename :: String
-            , avdVars :: [AVarInit]
-            }
+    AEof
+    | AFunctionDec {
+        afdSignature :: AFunctionSignature
+      , afdBlock :: ABlock
+    }
+    | AVarDec {
+        avdTypename :: String
+      , avdVars :: [AVarInit]
+    }
+    | AEnumDec {
+        aedName :: String
+      , aedValues :: [String]
+    }
+    deriving (Show)
+
+data AFunctionSignature =
+    AFunctionSignature {
+        afsIsStatic :: Bool
+      , afsReturnType :: String
+      , afsName :: String
+      , afsParams :: [AFunctionDecParam]
+    }
+    deriving (Show)
+
+data AFunctionDecParam =
+    AFunctionDecExtenderParam {
+        afdepName :: String
+    }
+    | AFunctionDecRegularParam {
+        afdrpName :: String
+      , afdrpVarInit :: AVarInit
+    }
+    deriving (Show)
+
+data ABlock =
+    ABlock {
+    }
     deriving (Show)
 
 data AVarInit =
-    AVarInit { aviId :: String
-             , aviSubscripts :: [AVarSubscript]
-             , aviInit :: Maybe AExpr
-             }
+    AVarInit {
+        aviId :: String
+      , aviSubscripts :: [AVarSubscript]
+      , aviInit :: Maybe AExpr
+    }
     deriving (Show)
 
 data AVarSubscript =
@@ -197,8 +233,69 @@ cartParse = do
 
 pTopLevel :: TokenParser ATopLevel
 pTopLevel =
-    pVarDec
+    (try pFunctionDec)
+    <|> (try pVarDec)
+    <|> (pEof >> return AEof)
     <?> "toplevel declaration"
+
+pFunctionDec :: TokenParser ATopLevel
+pFunctionDec = do
+    signature <- pFunctionSignature
+    block <- pBlock
+    return AFunctionDec {
+        afdSignature=signature
+      , afdBlock=block
+    }
+    <?> "function declaration"
+
+pFunctionSignature :: TokenParser AFunctionSignature
+pFunctionSignature = do
+    isStatic <- option Nothing (Just <$> (pStatic))
+    returnType <- ((pFunction >> return "void") <|> pIdentifier)
+    name <- pIdentifier
+    params <- between pLParen pRParen (many pFunctionDecParam)
+    return AFunctionSignature {
+        afsIsStatic=(isJust isStatic)
+      , afsReturnType=returnType
+      , afsName=name
+      , afsParams=params
+    }
+    <?> "function signature"
+
+pFunctionDecParam :: TokenParser AFunctionDecParam
+pFunctionDecParam =
+    pFunctionDecExtenderParam
+    <|> pFunctionDecRegularParam
+    <?> "function parameter"
+
+pFunctionDecExtenderParam :: TokenParser AFunctionDecParam
+pFunctionDecExtenderParam = do
+    _ <- pThis
+    name <- pIdentifier
+    _ <- pMult
+    return AFunctionDecExtenderParam {
+        afdepName=name
+    }
+
+pFunctionDecRegularParam :: TokenParser AFunctionDecParam
+pFunctionDecRegularParam = do
+    name <- pIdentifier
+    varInit <- pVarInit
+    return AFunctionDecRegularParam {
+        afdrpName=name
+      , afdrpVarInit=varInit
+    }
+
+pEnumDec :: TokenParser ATopLevel
+pEnumDec = do
+    _ <- pEnum
+    name <- pIdentifier
+    values <- between pLBracket pRBracket (sepBy1 pIdentifier pComma)
+    _ <- pSemicolon
+    return AEnumDec {
+        aedName=name
+      , aedValues=values
+    }
 
 pVarDec :: TokenParser ATopLevel
 pVarDec = do
@@ -220,6 +317,11 @@ pInitSubscript = do
     (AVSId <$> pIdentifier)
     <|> (AVSInt <$> pInteger)
     <|> return AVSEmpty
+
+pBlock :: TokenParser ABlock
+pBlock =
+    return ABlock { }
+    <?> "Block command"
 
 pExpr :: TokenParser AExpr
 pExpr =
@@ -247,17 +349,41 @@ pAssign = matchToken' TAssign
 pComma :: TokenParser ()
 pComma = matchToken' TComma
 
+pEnum :: TokenParser ()
+pEnum = matchToken' TEnum
+
+pEof :: TokenParser ()
+pEof = matchToken' TEof
+
 pFalse :: TokenParser ()
 pFalse = matchToken' TFalse
+
+pFunction :: TokenParser ()
+pFunction = matchToken' TFunction
 
 pLBracket :: TokenParser ()
 pLBracket = matchToken' TLBracket
 
+pLParen :: TokenParser ()
+pLParen = matchToken' TLParen
+
+pMult :: TokenParser ()
+pMult = matchToken' TMult
+
 pRBracket :: TokenParser ()
 pRBracket = matchToken' TRBracket
 
+pRParen :: TokenParser ()
+pRParen = matchToken' TRParen
+
 pSemicolon :: TokenParser ()
 pSemicolon = matchToken' TSemicolon
+
+pStatic :: TokenParser ()
+pStatic = matchToken' TStatic
+
+pThis :: TokenParser ()
+pThis = matchToken' TThis
 
 pTrue :: TokenParser ()
 pTrue = matchToken' TTrue
