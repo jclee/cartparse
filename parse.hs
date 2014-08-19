@@ -14,7 +14,8 @@ import Text.ParserCombinators.Parsec.Language (javaStyle)
 main :: IO ()
 main = do
     cartDir <- getEnv "CARTLIFE"
-    files <- sort <$> getFiles cartDir
+    files <- sort <$> filter (isSuffixOf ".asc") <$> (getFiles cartDir)
+    --files <- sort <$> filter (isSuffixOf ".ash") <$> (getFiles cartDir)
     mapM_ parseFile files
     --let file = cartDir </> "AskOnly.asc"
     --let file = cartDir </> "KeyboardMovement_102.asc"
@@ -27,7 +28,7 @@ parseFile file = do
     content <- fileContent file
     let toks = cartScan content
     let ast = parse cartParse "(parser input)" =<< toks
-    -- dumpToks $ take 200 <$> toks
+    --dumpToks $ take 200 <$> toks
     print ast
 
 getFiles :: FilePath -> IO [FilePath]
@@ -83,10 +84,12 @@ data Tok =
     | TBinOr
     | TLogAnd
     | TLogOr
-    | TPlusEq
-    | TMinusEq
-    | TMultEq
-    | TDivEq
+    | TPlusAssign
+    | TMinusAssign
+    | TMultAssign
+    | TDivAssign
+    | TInc
+    | TDec
     | TLBrace
     | TRBrace
     | TLParen
@@ -135,10 +138,12 @@ instance Show Tok where
     show TBinOr = "|"
     show TLogAnd = "&&"
     show TLogOr = "||"
-    show TPlusEq = "+="
-    show TMinusEq = "-="
-    show TMultEq = "*="
-    show TDivEq = "/="
+    show TPlusAssign = "+="
+    show TMinusAssign = "-="
+    show TMultAssign = "*="
+    show TDivAssign = "/="
+    show TInc = "++"
+    show TDec = "--"
     show TLBrace = "{"
     show TRBrace = "}"
     show TLParen = "("
@@ -162,7 +167,7 @@ instance Show Tok where
 
 type Ast = [ATopLevel]
 
--- TODO DO NOT COMMIT - need to preserve constituent token decorations...
+-- TODO - need to preserve constituent token decorations...
 data ATopLevel =
     AEof
     | AFunctionDec {
@@ -170,6 +175,7 @@ data ATopLevel =
       , afdBlock :: ABlock
     }
     | ATopLevelVarDec AVarDec
+    | ATopLevelImportDec AImportDec
     | AEnumDec {
         aedName :: String
       , aedValues :: [String]
@@ -258,6 +264,11 @@ data AExpr =
     | AFloatExpr Double
     | AIntExpr Integer
     | AStringExpr String
+    | AIdentifierExpr String
+    | AIndexExpr {
+          aieExpr :: AExpr
+        , aieIndexExpr :: AExpr
+      }
     | ACallExpr {
           aceFunctionExpr :: AExpr
         , aceParams :: [AExpr]
@@ -304,12 +315,13 @@ cartParse = do
 
 pTopLevel :: TokenParser ATopLevel
 pTopLevel =
-    (try pFunctionDec)
-    <|> (try pEnumDec)
-    <|> (try pStructDec)
-    <|> (try pTopLevelVarDec)
-    <|> (try pExportDec)
+    pEnumDec
+    <|> pStructDec
+    <|> pExportDec
+    <|> (ATopLevelImportDec <$> pImportDec)
     <|> (pEof >> return AEof)
+    <|> (try pTopLevelVarDec)
+    <|> pFunctionDec
     <?> "toplevel declaration"
 
 pStructDec :: TokenParser ATopLevel
@@ -365,7 +377,7 @@ pFunctionSignature = do
     isStatic <- option Nothing (Just <$> (pStatic))
     returnType <- ((pFunction >> return "void") <|> pIdentifier)
     name <- pIdentifier
-    params <- between pLParen pRParen (many pFunctionDecParam)
+    params <- between pLParen pRParen (sepBy pFunctionDecParam pComma)
     return AFunctionSignature {
         afsIsStatic=(isJust isStatic)
       , afsReturnType=returnType
@@ -416,7 +428,7 @@ pVarDec :: TokenParser AVarDec
 pVarDec = do
     typeName <- pTypeName
     vars <- sepBy1 pVarInit pComma
-    pSemicolon
+    _ <- pSemicolon
     return $ AVarDec { avdTypeName=typeName, avdVars=vars }
     <?> "variable declaration"
 
@@ -444,9 +456,9 @@ pCommand =
     pIfCommand
     <|> pWhileCommand
     <|> pReturnCommand
-    <|> pVarDecCommand
-    <|> pExprCommand
     <|> pBlockCommand
+    <|> (try pVarDecCommand)
+    <|> pExprCommand
     <?> "command";
 
 pIfCommand :: TokenParser ACommand
@@ -496,15 +508,169 @@ pBlockCommand :: TokenParser ACommand
 pBlockCommand = ABlockCommand <$> pBlock
 
 pExpr :: TokenParser AExpr
-pExpr =
-    (pTrue >> return ATrue)
+pExpr = chainl1 pLogicalOrExpr pAssignBinOp
+        <?> "expression"
+
+pLogicalOrExpr :: TokenParser AExpr
+pLogicalOrExpr = chainl1 pLogicalAndExpr pLogOrBinOp
+
+pLogicalAndExpr :: TokenParser AExpr
+pLogicalAndExpr = chainl1 pBinOrExpr pLogAndBinOp
+
+pBinOrExpr :: TokenParser AExpr
+pBinOrExpr = chainl1 pBinAndExpr pBinOrBinOp
+
+pBinAndExpr :: TokenParser AExpr
+pBinAndExpr = chainl1 pEqExpr pBinAndBinOp
+
+pEqExpr :: TokenParser AExpr
+pEqExpr = chainl1 pRelationalExpr pEqBinOp
+
+pRelationalExpr :: TokenParser AExpr
+pRelationalExpr = chainl1 pAddExpr pRelationalBinOp
+
+pAddExpr :: TokenParser AExpr
+pAddExpr = chainl1 pMultExpr pAddBinOp
+
+pMultExpr :: TokenParser AExpr
+pMultExpr = chainl1 pMaybeCastExpr pMultBinOp
+
+pAssignBinOp :: TokenParser (AExpr -> AExpr -> AExpr)
+pAssignBinOp = pBinOp (pAssign
+                       <|> pPlusAssign
+                       <|> pMinusAssign
+                       <|> pMultAssign
+                       <|> pDivAssign)
+
+pLogOrBinOp :: TokenParser (AExpr -> AExpr -> AExpr)
+pLogOrBinOp = pBinOp pLogOr
+
+pLogAndBinOp :: TokenParser (AExpr -> AExpr -> AExpr)
+pLogAndBinOp = pBinOp pLogAnd
+
+pBinOrBinOp :: TokenParser (AExpr -> AExpr -> AExpr)
+pBinOrBinOp = pBinOp pBinOr
+
+pBinAndBinOp :: TokenParser (AExpr -> AExpr -> AExpr)
+pBinAndBinOp = pBinOp pBinAnd
+
+pEqBinOp :: TokenParser (AExpr -> AExpr -> AExpr)
+pEqBinOp = pBinOp (pEq <|> pNeq)
+
+pRelationalBinOp :: TokenParser (AExpr -> AExpr -> AExpr)
+pRelationalBinOp = pBinOp (pLtEq <|> pGtEq <|> pLt <|> pGt)
+
+pAddBinOp :: TokenParser (AExpr -> AExpr -> AExpr)
+pAddBinOp = pBinOp (pPlus <|> pMinus)
+
+pMultBinOp :: TokenParser (AExpr -> AExpr -> AExpr)
+pMultBinOp = pBinOp (pMult <|> pDiv)
+
+pBinOp :: TokenParser String -> TokenParser (AExpr -> AExpr -> AExpr)
+pBinOp opParser = do
+    opString <- opParser
+    return (\expr1 expr2 -> ABinOpExpr {
+          aboeExpr1=expr1
+        , aboeExpr2=expr2
+        , aboeOp=opString
+      })
+
+pMaybeCastExpr :: TokenParser AExpr
+pMaybeCastExpr = (try pCastExpr) <|> pMaybeUnaryExpr
+
+pCastExpr :: TokenParser AExpr
+pCastExpr = do
+    typeName <- between pLParen pRParen pTypeName
+    castExpr <- pMaybeCastExpr
+    return ACastExpr {
+        aceTypeName=typeName
+      , aceCastExpr=castExpr
+    }
+
+pMaybeUnaryExpr :: TokenParser AExpr
+pMaybeUnaryExpr = pUnaryExpr <|> pMaybePostfixExpr
+
+pUnaryExpr :: TokenParser AExpr
+pUnaryExpr = do
+    op <- (pInc <|> pDec <|> pPlus <|> pMinus <|> pBinAnd <|> pMult <|> pNot)
+    expr <- pMaybeUnaryExpr
+    return AUnaryOpExpr {
+        auoeExpr=expr
+      , auoeOp=op
+    }
+
+pMaybePostfixExpr :: TokenParser AExpr
+pMaybePostfixExpr = do
+    primaryExpr <- pPrimaryExpr
+    pMaybePostfixExpr' primaryExpr
+
+pMaybePostfixExpr' :: AExpr -> TokenParser AExpr
+pMaybePostfixExpr' rootExpr = do
+    pIndexExpr rootExpr
+    <|> pCallExpr rootExpr
+    <|> pMemberExpr rootExpr
+    <|> pPostOpExpr rootExpr
+    <|> (return rootExpr)
+
+pIndexExpr :: AExpr -> TokenParser AExpr
+pIndexExpr rootExpr = do
+    indexExpr <- between pLBracket pRBracket pExpr
+    pMaybePostfixExpr' AIndexExpr {
+        aieExpr=rootExpr
+      , aieIndexExpr=indexExpr
+    }
+
+pCallExpr :: AExpr -> TokenParser AExpr
+pCallExpr rootExpr = do
+    params <- between pLParen pRParen (sepBy pExpr pComma)
+    pMaybePostfixExpr' ACallExpr {
+        aceFunctionExpr=rootExpr
+      , aceParams=params
+    }
+
+pMemberExpr :: AExpr -> TokenParser AExpr
+pMemberExpr rootExpr = do
+    _ <- pDot
+    member <- pIdentifier
+    pMaybePostfixExpr' AMemberExpr {
+        ameExpr=rootExpr
+      , ameMember=member
+    }
+
+pPostOpExpr :: AExpr -> TokenParser AExpr
+pPostOpExpr rootExpr = do
+    op <- (pInc <|> pDec)
+    pMaybePostfixExpr' APostOpExpr {
+        apoeExpr=rootExpr
+      , apoeOp=op
+    }
+
+pPrimaryExpr :: TokenParser AExpr
+pPrimaryExpr = do
+    (AParenExpr <$> (between pLParen pRParen pExpr))
+    <|> (AFloatExpr <$> pFloat)
+    <|> (AIntExpr <$> pInteger)
+    <|> (AStringExpr <$> pString)
+    <|> (AIdentifierExpr <$> pIdentifier)
     <|> (pFalse >> return AFalse)
-    <?> "expression"
+    <|> (pTrue >> return ATrue)
+    <|> (pThis >> return AThisExpr)
+    <|> pNewExpr
+
+pNewExpr :: TokenParser AExpr
+pNewExpr = do
+    _ <- pNew
+    typeName <- pTypeName
+    sizeExpr <- between pLBracket pRBracket pExpr
+    return ANewExpr {
+        aneTypeName=typeName
+      , aneSizeExpr=sizeExpr
+    }
 
 pTypeName :: TokenParser ATypeName
 pTypeName = do
-    isPointer <- option False (pMult >> return True)
     name <- pIdentifier
+    isPointer <- option False (pMult >> return True)
     return ATypeName { atnName=name, atnIsPointer=isPointer }
     <?> "type name"
 
@@ -515,6 +681,20 @@ pInteger =
       test (TInteger i) = Just i
       test _ = Nothing
 
+pFloat :: TokenParser Double
+pFloat =
+    matchToken test
+    where
+      test (TFloat i) = Just i
+      test _ = Nothing
+
+pString :: TokenParser String
+pString =
+    matchToken test
+    where
+      test (TString i) = Just i
+      test _ = Nothing
+
 pIdentifier :: TokenParser String
 pIdentifier =
     matchToken test
@@ -522,211 +702,146 @@ pIdentifier =
       test (TIdentifier s) = Just s
       test _ = Nothing
 
-pAssign :: TokenParser ()
+pAssign :: TokenParser String
 pAssign = matchToken' TAssign
 
-pComma :: TokenParser ()
+pBinAnd :: TokenParser String
+pBinAnd = matchToken' TBinAnd
+
+pBinOr :: TokenParser String
+pBinOr = matchToken' TBinOr
+
+pComma :: TokenParser String
 pComma = matchToken' TComma
 
-pElse :: TokenParser ()
+pDiv :: TokenParser String
+pDiv = matchToken' TDiv
+
+pDivAssign :: TokenParser String
+pDivAssign = matchToken' TDivAssign
+
+pDec :: TokenParser String
+pDec = matchToken' TDec
+
+pDot :: TokenParser String
+pDot = matchToken' TDot
+
+pElse :: TokenParser String
 pElse = matchToken' TElse
 
-pEnum :: TokenParser ()
+pEnum :: TokenParser String
 pEnum = matchToken' TEnum
 
-pEof :: TokenParser ()
+pEq :: TokenParser String
+pEq = matchToken' TEq
+
+pEof :: TokenParser String
 pEof = matchToken' TEof
 
-pExport :: TokenParser ()
+pExport :: TokenParser String
 pExport = matchToken' TExport
 
-pFalse :: TokenParser ()
+pFalse :: TokenParser String
 pFalse = matchToken' TFalse
 
-pFunction :: TokenParser ()
+pFunction :: TokenParser String
 pFunction = matchToken' TFunction
 
-pIf :: TokenParser ()
+pGt :: TokenParser String
+pGt = matchToken' TGt
+
+pGtEq :: TokenParser String
+pGtEq = matchToken' TGtEq
+
+pIf :: TokenParser String
 pIf = matchToken' TIf
 
-pImport :: TokenParser ()
+pInc :: TokenParser String
+pInc = matchToken' TInc
+
+pImport :: TokenParser String
 pImport = matchToken' TImport
 
-pLBrace :: TokenParser ()
+pLBrace :: TokenParser String
 pLBrace = matchToken' TLBrace
 
-pLBracket :: TokenParser ()
+pLBracket :: TokenParser String
 pLBracket = matchToken' TLBracket
 
-pLParen :: TokenParser ()
+pLogAnd :: TokenParser String
+pLogAnd = matchToken' TLogAnd
+
+pLogOr :: TokenParser String
+pLogOr = matchToken' TLogOr
+
+pLParen :: TokenParser String
 pLParen = matchToken' TLParen
 
-pMult :: TokenParser ()
+pLt :: TokenParser String
+pLt = matchToken' TLt
+
+pLtEq :: TokenParser String
+pLtEq = matchToken' TLtEq
+
+pMinus :: TokenParser String
+pMinus = matchToken' TMinus
+
+pMinusAssign :: TokenParser String
+pMinusAssign = matchToken' TMinusAssign
+
+pMult :: TokenParser String
 pMult = matchToken' TMult
 
-pRBrace :: TokenParser ()
+pMultAssign :: TokenParser String
+pMultAssign = matchToken' TMultAssign
+
+pNeq :: TokenParser String
+pNeq = matchToken' TNeq
+
+pNew :: TokenParser String
+pNew = matchToken' TNew
+
+pNot :: TokenParser String
+pNot = matchToken' TNot
+
+pPlus :: TokenParser String
+pPlus = matchToken' TPlus
+
+pPlusAssign :: TokenParser String
+pPlusAssign = matchToken' TPlusAssign
+
+pRBrace :: TokenParser String
 pRBrace = matchToken' TRBrace
 
-pRBracket :: TokenParser ()
+pRBracket :: TokenParser String
 pRBracket = matchToken' TRBracket
 
-pReturn :: TokenParser ()
+pReturn :: TokenParser String
 pReturn = matchToken' TReturn
 
-pRParen :: TokenParser ()
+pRParen :: TokenParser String
 pRParen = matchToken' TRParen
 
-pSemicolon :: TokenParser ()
+pSemicolon :: TokenParser String
 pSemicolon = matchToken' TSemicolon
 
-pStatic :: TokenParser ()
+pStatic :: TokenParser String
 pStatic = matchToken' TStatic
 
-pStruct :: TokenParser ()
+pStruct :: TokenParser String
 pStruct = matchToken' TStruct
 
-pThis :: TokenParser ()
+pThis :: TokenParser String
 pThis = matchToken' TThis
 
-pTrue :: TokenParser ()
+pTrue :: TokenParser String
 pTrue = matchToken' TTrue
 
-pWhile :: TokenParser ()
+pWhile :: TokenParser String
 pWhile = matchToken' TWhile
 
-{-
-TODO DO NOT COMMIT - convert to code
-
-toplevel
-  - function
-  - vardec
-  - enum
-  - struct
-  - export
-  - import
-
-export
-  - "export" id ";"
-
-import
-  - "import"
-    - functionsig ";"
-    - vardec
-
-function
-  - functionsig block
-
-functionsig
-  - "static"? ("function" | id) id ("::" id) paramdec
-
-paramdecs
-  - "(" (paramdec ("," paramdec)*)? ")"
-
-paramdec
-  - "this" id "*"
-  - typename varinit
-
-block
-  - "{" command* "}"
-
-command
-  - if
-  - while
-  - return
-  - vardec
-  - exprcommand
-  - block
-
-exprcommand
-  - expr ";"
-
-if
-  - "if" "(" expr ")" command ("else" command)?
-
-while
-  - "while" "(" expr ")" command
-
-return
-  - "return" expr? ";"
-
-vardec
-  - typename varinit ("," varinit)* ";"
-
-varinit
-  - id ("[" (int | id)? "]")* ("=" expr)
-
-enum
-  - "enum" id "{" (id ("," id)*)? "}"
-
-struct
-  - "struct" id "{" (vardec | import)* "}" ";"
-
-expr
-  - assignexpr
-
-assign_expr
-  - logicalorexpr ("=" | "+=" | "-=" | "*=" | "/=" assign_expr)?
-
-logicalorexpr
-  - logicalandexpr ("||" logicalorexpr)?
-
-logicalandexpr
-  - binorexpr ("&&" logicalandexpr)?
-
-binorexpr
-  - binandexpr ("|" binorexpr)?
-
-binandexpr
-  - eqexpr ("&" binandexpr)?
-
-eqexpr
-  - relationalexpr (("==" | "!=") eqexpr)?
-
-relationalexpr
-  - addexpr (("<" | ">" | "<=" | ">=") relationalexpr)?
-
-addexpr
-  - multexpr (("+" | "-")? addexpr)?
-
-multexpr
-  - castexpr (("*" | "/")? multexpr)?
-
-castexpr
-  - unaryexpr
-  - "(" typename ")"
-
-naryexpr
-  - ("++" | "--" | "+" | "-" | "&" | "*" | "!") unaryexpr
-  - postfixexpr
-
-postfixexpr
-  - primaryexpr
-    - "[" expr "]"
-    - callparams
-    - "." id
-    - "++"
-    - "--"
-
-primaryexpr
-  - "(" expr ")"
-  - float
-  - int
-  - string
-  - "this"
-  - "new" typename "[" expr "]"
-
-callparams
-  - "(" (expr ("," expr)*)? ")"
-
-typename
-  - "*"? id
-
--}
-
-matchToken' :: Tok -> TokenParser ()
-matchToken' tok = do
-    _ <- matchToken (\t -> if t == tok then Just t else Nothing)
-    return ()
+matchToken' :: Tok -> TokenParser String
+matchToken' tok = matchToken (\t -> if t == tok then Just (show t) else Nothing)
 
 matchToken :: (Tok -> Maybe a) -> TokenParser a
 matchToken test
@@ -741,7 +856,7 @@ dumpToks (Left err) = putStrLn $ "Scanning error: " ++ show err
 dumpToks (Right toks) = mapM_ dumpTok toks
 
 dumpTok :: Token -> IO ()
-dumpTok (pos, decs, tok) = putStrLn $ show (sourceLine pos) ++ " " ++ show tok
+dumpTok (pos, _decs, tok) = putStrLn $ show (sourceLine pos) ++ " " ++ show tok
 
 cartScan :: String -> Either ParseError [Token]
 cartScan s = do
@@ -790,19 +905,18 @@ scanTok =
     <|> (reserved "true" >> return TTrue)
     <|> (reserved "this" >> return TThis)
     <|> (reserved "while" >> return TWhile)
-    <|> try (TInteger <$> integer)
-    <|> try (TFloat <$> float)
-    <|> try (TString <$> stringLiteral)
     <|> scanTokFromString "&&" TLogAnd
     <|> scanTokFromString "||" TLogOr
     <|> scanTokFromString "==" TEq
     <|> scanTokFromString "!=" TNeq
     <|> scanTokFromString "<=" TLtEq
     <|> scanTokFromString ">=" TGtEq
-    <|> scanTokFromString "+=" TPlusEq
-    <|> scanTokFromString "-=" TMinusEq
-    <|> scanTokFromString "*=" TMultEq
-    <|> scanTokFromString "/=" TDivEq
+    <|> scanTokFromString "+=" TPlusAssign
+    <|> scanTokFromString "++" TInc
+    <|> scanTokFromString "-=" TMinusAssign
+    <|> scanTokFromString "--" TDec
+    <|> scanTokFromString "*=" TMultAssign
+    <|> scanTokFromString "/=" TDivAssign
     <|> scanTokFromString "::" TMember
     <|> scanTokFromString "<" TLt
     <|> scanTokFromString ">" TGt
@@ -823,6 +937,9 @@ scanTok =
     <|> scanTokFromString "]" TRBracket
     <|> scanTokFromString "(" TLParen
     <|> scanTokFromString ")" TRParen
+    <|> try (TFloat <$> float)
+    <|> try (TInteger <$> integer)
+    <|> try (TString <$> stringLiteral)
     <|> TIdentifier <$> identifier
 
 scanTokFromString :: String -> Tok -> Parser Tok
