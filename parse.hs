@@ -337,7 +337,7 @@ pStructDec = do
 
 pStructDecMember :: TokenParser (Either AImportDec AVarDec)
 pStructDecMember =
-    (try $ Left <$> pImportDec)
+    (Left <$> pImportDec)
     <|> (Right <$> pVarDec)
     <?> "structure member"
 
@@ -905,45 +905,46 @@ scanTok =
     <|> (reserved "true" >> return TTrue)
     <|> (reserved "this" >> return TThis)
     <|> (reserved "while" >> return TWhile)
-    <|> scanTokFromString "&&" TLogAnd
-    <|> scanTokFromString "||" TLogOr
-    <|> scanTokFromString "==" TEq
-    <|> scanTokFromString "!=" TNeq
-    <|> scanTokFromString "<=" TLtEq
-    <|> scanTokFromString ">=" TGtEq
-    <|> scanTokFromString "+=" TPlusAssign
-    <|> scanTokFromString "++" TInc
-    <|> scanTokFromString "-=" TMinusAssign
-    <|> scanTokFromString "--" TDec
-    <|> scanTokFromString "*=" TMultAssign
-    <|> scanTokFromString "/=" TDivAssign
+    <|> scanTokFromChar'' '+' TPlus '+' TInc '=' TPlusAssign
+    <|> scanTokFromChar'' '-' TMinus '-' TDec '=' TMinusAssign
+    <|> scanTokFromChar' '!' TNot '=' TNeq
+    <|> scanTokFromChar' '&' TBinAnd '&' TLogAnd
+    <|> scanTokFromChar' '*' TMult '=' TMultAssign
+    <|> scanTokFromChar' '/' TDiv '=' TDivAssign
+    <|> scanTokFromChar' '<' TLt '=' TLtEq
+    <|> scanTokFromChar' '=' TAssign '=' TEq
+    <|> scanTokFromChar' '>' TGt '=' TGtEq
+    <|> scanTokFromChar' '|' TBinOr '|' TLogOr
+    <|> scanTokFromChar '(' TLParen
+    <|> scanTokFromChar ')' TRParen
+    <|> scanTokFromChar ',' TComma
+    <|> scanTokFromChar '.' TDot
+    <|> scanTokFromChar ';' TSemicolon
+    <|> scanTokFromChar '[' TLBracket
+    <|> scanTokFromChar ']' TRBracket
+    <|> scanTokFromChar '{' TLBrace
+    <|> scanTokFromChar '}' TRBrace
     <|> scanTokFromString "::" TMember
-    <|> scanTokFromString "<" TLt
-    <|> scanTokFromString ">" TGt
-    <|> scanTokFromString "+" TPlus
-    <|> scanTokFromString "-" TMinus
-    <|> scanTokFromString "/" TDiv
-    <|> scanTokFromString "*" TMult
-    <|> scanTokFromString "!" TNot
-    <|> scanTokFromString "&" TBinAnd
-    <|> scanTokFromString "|" TBinOr
-    <|> scanTokFromString "=" TAssign
-    <|> scanTokFromString "," TComma
-    <|> scanTokFromString "." TDot
-    <|> scanTokFromString ";" TSemicolon
-    <|> scanTokFromString "{" TLBrace
-    <|> scanTokFromString "}" TRBrace
-    <|> scanTokFromString "[" TLBracket
-    <|> scanTokFromString "]" TRBracket
-    <|> scanTokFromString "(" TLParen
-    <|> scanTokFromString ")" TRParen
     <|> try (TFloat <$> float)
-    <|> try (TInteger <$> integer)
-    <|> try (TString <$> stringLiteral)
+    <|> TInteger <$> integer
+    <|> TString <$> stringLiteral
     <|> TIdentifier <$> identifier
 
 scanTokFromString :: String -> Tok -> Parser Tok
-scanTokFromString s t = try (lexeme $ string s >> return t)
+scanTokFromString s t = lexeme $ string s >> return t
+
+scanTokFromChar :: Char -> Tok -> Parser Tok
+scanTokFromChar c t = lexeme $ char c >> return t
+
+scanTokFromChar' :: Char -> Tok -> Char -> Tok -> Parser Tok
+scanTokFromChar' c1 t1 c2 t2 =
+  lexeme $ char c1 >> ((char c2 >> return t2) <|> return t1)
+
+scanTokFromChar'' :: Char -> Tok -> Char -> Tok -> Char -> Tok -> Parser Tok
+scanTokFromChar'' c1 t1 c2 t2 c3 t3 =
+  lexeme $ char c1 >> ((char c2 >> return t2)
+                       <|> (char c3 >> return t3)
+                       <|> return t1)
 
 -- Better signature?
 agsStyle :: P.GenLanguageDef String u Identity
