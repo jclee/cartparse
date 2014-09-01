@@ -29,7 +29,7 @@ parseFile file = do
     let toks = cartScan content
     let ast = parse cartParse "(parser input)" =<< toks
     --dumpToks $ take 200 <$> toks
-    print ast
+    putStrLn $ either show (renderToString . render) ast
 
 getFiles :: FilePath -> IO [FilePath]
 getFiles p = filterM doesFileExist =<< getRelDirectoryContents p
@@ -165,7 +165,8 @@ instance Show Tok where
     show TWhile = "while"
     show TEof = "EOF"
 
-type Ast = [ATopLevel]
+data Ast = Ast [ATopLevel]
+    deriving (Show)
 
 -- TODO - need to preserve constituent token decorations...
 data ATopLevel =
@@ -182,11 +183,16 @@ data ATopLevel =
     }
     | AStructDec {
         asdName :: String
-      , asdMembers :: [Either AImportDec AVarDec]
+      , asdMembers :: [AStructMember]
     }
     | AExportDec {
         axdName :: String
     }
+    deriving (Show)
+
+data AStructMember =
+    AStructMemberImport AImportDec
+    | AStructMemberVar AVarDec
     deriving (Show)
 
 data AImportDec =
@@ -307,11 +313,139 @@ data ATypeName =
 type TokenParser a = GenParser Token () a
 type PreTokenParser a = GenParser PreToken () a
 
+-- Data.ByteString might be more performant?
+data Doc =
+    Text String
+    | Line
+    | Space
+    | Elipsis
+    deriving (Show)
+
+class Renderable a where
+    render :: a -> [Doc]
+
+instance Renderable Ast where
+    render (Ast topLevels) = concat (render <$> topLevels)
+
+instance Renderable ATopLevel where
+    render AEof = [Text ""]
+    render AFunctionDec {
+        afdSignature=_signature
+      , afdBlock=_block
+    } = [Elipsis] -- TODO DO NOT COMMIT
+    render (ATopLevelVarDec varDec) = render varDec ++ [Line]
+    render (ATopLevelImportDec importDec) = render importDec ++ [Line]
+    render AEnumDec {
+        aedName=name
+      , aedValues=values
+    } = [Text "enum", Space, Text name, Space, Text "{"] ++ renderValues values ++ [Text "}", Text ";", Line]
+        where
+          renderValues [] = []
+          renderValues items = [Line] ++ intercalate [Text ",", Line] ((:[]) . Text <$> items) ++ [Line]
+    render AStructDec {
+        asdName=name
+      , asdMembers=members
+    } = [Text "struct", Space, Text name, Space] ++ renderBetween "{" "}" members ++ [Text ";", Line]
+    render AExportDec {
+        axdName=name
+    } = [Text "export", Space, Text name, Text ";", Line]
+
+instance Renderable AStructMember where
+    render (AStructMemberImport imp) = render imp
+    render (AStructMemberVar var) = render var
+
+instance Renderable AImportDec where
+    render (AImportFunctionDec sig) = [Text "import", Space] ++ [Elipsis] -- TODO DO NOT COMMIT
+    render (AImportVarDec varDec) = [Text "import", Space] ++ render varDec
+
+instance Renderable AVarDec where
+    render AVarDec {
+        avdTypeName=name
+      , avdVars=vars
+    } = render name ++ [Space] ++ intercalate [Text ",", Space] (fmap render vars) ++ [Text ";"]
+
+instance Renderable ATypeName where
+    render ATypeName {
+        atnName=name
+      , atnIsPointer=isPointer
+    } = [Text name] ++ (if isPointer then [Space, Text "*"] else [])
+
+instance Renderable AVarInit where
+    render AVarInit {
+        aviId=varId
+      , aviSubscripts=subscripts
+      , aviInit=initializer
+    } =
+        [Text varId]
+        ++ (concat $ render <$> subscripts)
+        ++ (maybe [] (\e -> [Space, Text "=", Space] ++ render e) initializer)
+
+instance Renderable AVarSubscript where
+    render AVSEmpty = [Text "[", Text "]"]
+    render (AVSId s) = [Text "[", Text s, Text "]"]
+    render (AVSInt i) = [Text "[", Text $ show i, Text "]"]
+
+instance Renderable AExpr where
+    render AFalse = [Text "false"]
+    render ATrue = [Text "true"]
+    render AThisExpr = [Text "this"]
+    render ANewExpr {
+        aneTypeName=name
+      , aneSizeExpr=expr
+    } = [Text "new", Space] ++ render name ++ [Text "["] ++ render expr ++ [Text "]"]
+    render (AFloatExpr d) = [Text $ show d]
+    render (AIntExpr i) = [Text $ show i]
+    render (AStringExpr _s) = [Elipsis] -- TODO DO NOT COMMIT escape
+    render (AIdentifierExpr s) = [Text $ s]
+    render AIndexExpr {
+        aieExpr=expr
+      , aieIndexExpr=indexExpr
+    } = render expr ++ [Text "["] ++ render indexExpr ++ [Text "]"]
+    render ACallExpr {
+        aceFunctionExpr=expr
+      , aceParams=params
+    } = render expr ++ [Text "("] ++ intercalate [Text ",", Space] (render <$> params) ++ [Text ")"]
+    render AMemberExpr {
+        ameExpr=expr
+      , ameMember=member
+    } = render expr ++ [Text ".", Text member]
+    render AUnaryOpExpr {
+        auoeExpr=expr
+      , auoeOp=op
+    } = [Text op] ++ render expr
+    render APostOpExpr {
+        apoeExpr=expr
+      , apoeOp=op
+    } = render expr ++ [Text op]
+    render ABinOpExpr {
+        aboeExpr1=expr1
+      , aboeExpr2=expr2
+      , aboeOp=op
+    } = render expr1 ++ [Space, Text op, Space] ++ render expr2
+    render (AParenExpr expr) = [Text "("] ++ render expr ++ [Text ")"]
+    render ACastExpr {
+        aceTypeName=typeName
+      , aceCastExpr=castExpr
+    } = [Text "("] ++ render typeName ++ [Text ")", Space] ++ render castExpr
+
+renderBetween :: (Renderable a) => String -> String -> [a] -> [Doc]
+renderBetween start end [] = [Text start, Text end]
+renderBetween start end items = [Text start, Line] ++ intercalate [Line] (fmap render items) ++ [Line, Text end]
+
+renderToString :: [Doc] -> String
+renderToString = concat . (fmap renderToString')
+
+renderToString' :: Doc -> String
+renderToString' (Text s) = s
+renderToString' Line = "\n"
+renderToString' Space = " "
+renderToString' Elipsis = "..."
+
 cartParse :: TokenParser Ast
 cartParse = do
     topLevels <- many pTopLevel
     eof
-    return topLevels
+    return $ Ast topLevels
 
 pTopLevel :: TokenParser ATopLevel
 pTopLevel =
@@ -335,10 +469,10 @@ pStructDec = do
       , asdMembers=members
     }
 
-pStructDecMember :: TokenParser (Either AImportDec AVarDec)
+pStructDecMember :: TokenParser AStructMember
 pStructDecMember =
-    (Left <$> pImportDec)
-    <|> (Right <$> pVarDec)
+    (AStructMemberImport <$> pImportDec)
+    <|> (AStructMemberVar <$> pVarDec)
     <?> "structure member"
 
 pExportDec :: TokenParser ATopLevel
