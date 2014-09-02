@@ -196,7 +196,7 @@ data AStructMember =
     deriving (Show)
 
 data AImportDec =
-    AImportFunctionDec AFunctionSignature
+    AImportFunctionSig AFunctionSignature
     | AImportVarDec AVarDec
     deriving (Show)
 
@@ -330,9 +330,9 @@ instance Renderable Ast where
 instance Renderable ATopLevel where
     render AEof = [Text ""]
     render AFunctionDec {
-        afdSignature=_signature
-      , afdBlock=_block
-    } = [Elipsis] -- TODO DO NOT COMMIT
+        afdSignature=signature
+      , afdBlock=block
+    } = render signature ++ [Space] ++ render block ++ [Line]
     render (ATopLevelVarDec varDec) = render varDec ++ [Line]
     render (ATopLevelImportDec importDec) = render importDec ++ [Line]
     render AEnumDec {
@@ -350,13 +350,56 @@ instance Renderable ATopLevel where
         axdName=name
     } = [Text "export", Space, Text name, Text ";", Line]
 
+instance Renderable ABlock where
+    render (ABlock []) = [Text "{", Text "}"]
+    render (ABlock commands) =
+        [Text "{", Line]
+        ++ intercalate [Line] (render <$> commands)
+        ++ [Line, Text "}"]
+
+instance Renderable ACommand where
+    render AIfCommand {
+        aicTestExpr=testExpr
+      , aicTrueCommand=trueCommand
+      , aicFalseCommand=falseCommand
+    } = [Elipsis] -- TODO DO NOT COMMIT
+    render AWhileCommand {
+        awcTestExpr=testExpr
+      , awcCommand=command
+    } = [Elipsis] -- TODO DO NOT COMMIT
+    render (AReturnCommand expr) = [Elipsis] -- TODO DO NOT COMMIT
+    render (AVarDecCommand varDec) = [Elipsis] -- TODO DO NOT COMMIT
+    render (AExprCommand expr) = [Elipsis] -- TODO DO NOT COMMIT
+    render (ABlockCommand block) = [Elipsis] -- TODO DO NOT COMMIT
+
 instance Renderable AStructMember where
     render (AStructMemberImport imp) = render imp
     render (AStructMemberVar var) = render var
 
 instance Renderable AImportDec where
-    render (AImportFunctionDec sig) = [Text "import", Space] ++ [Elipsis] -- TODO DO NOT COMMIT
+    render (AImportFunctionSig sig) = [Text "import", Space] ++ render sig
     render (AImportVarDec varDec) = [Text "import", Space] ++ render varDec
+
+instance Renderable AFunctionSignature where
+    render AFunctionSignature {
+        afsIsStatic=isStatic
+      , afsReturnType=returnType
+      , afsName=name
+      , afsParams=params
+    } = (if isStatic then [Text "static", Space] else [])
+        ++ [Text (if returnType == "void" then "function" else "returnType"), Space]
+        ++ [Text name, Text "("]
+        ++ intercalate [Text ",", Space] (render <$> params)
+        ++ [Text ")"]
+
+instance Renderable AFunctionDecParam where
+    render AFunctionDecExtenderParam {
+        afdepName=name
+    } = [Text "this", Space, Text name, Text "*"]
+    render AFunctionDecRegularParam {
+        afdrpTypeName=typeName
+      , afdrpVarInit=varInit
+    } = render typeName ++ [Space] ++ render varInit
 
 instance Renderable AVarDec where
     render AVarDec {
@@ -395,7 +438,7 @@ instance Renderable AExpr where
     } = [Text "new", Space] ++ render name ++ [Text "["] ++ render expr ++ [Text "]"]
     render (AFloatExpr d) = [Text $ show d]
     render (AIntExpr i) = [Text $ show i]
-    render (AStringExpr _s) = [Elipsis] -- TODO DO NOT COMMIT escape
+    render (AStringExpr s) = [Text $ show s] -- TODO: escapes OK?
     render (AIdentifierExpr s) = [Text $ s]
     render AIndexExpr {
         aieExpr=expr
@@ -491,7 +534,7 @@ pImportFunctionDec :: TokenParser AImportDec
 pImportFunctionDec = do
     functionSig <- pFunctionSignature
     _ <- pSemicolon
-    return $ AImportFunctionDec functionSig
+    return $ AImportFunctionSig functionSig
 
 pImportVarDec :: TokenParser AImportDec
 pImportVarDec = AImportVarDec <$> pVarDec
