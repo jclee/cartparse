@@ -362,15 +362,24 @@ instance Renderable ACommand where
         aicTestExpr=testExpr
       , aicTrueCommand=trueCommand
       , aicFalseCommand=falseCommand
-    } = [Elipsis] -- TODO DO NOT COMMIT
+    } = [Text "if", Space, Text "("]
+        ++ render testExpr
+        ++ [Text ")", Space]
+        ++ render trueCommand
+        ++ maybe [] (\x -> [Space, Text "else", Space] ++ render x) falseCommand
     render AWhileCommand {
         awcTestExpr=testExpr
       , awcCommand=command
-    } = [Elipsis] -- TODO DO NOT COMMIT
-    render (AReturnCommand expr) = [Elipsis] -- TODO DO NOT COMMIT
-    render (AVarDecCommand varDec) = [Elipsis] -- TODO DO NOT COMMIT
-    render (AExprCommand expr) = [Elipsis] -- TODO DO NOT COMMIT
-    render (ABlockCommand block) = [Elipsis] -- TODO DO NOT COMMIT
+    } = [Text "while", Space, Text "("]
+        ++ render testExpr
+        ++ [Text ")", Space]
+        ++ render command
+    render (AReturnCommand Nothing) = [Text "return", Text ";"]
+    render (AReturnCommand (Just expr)) =
+      [Text "return", Space] ++ render expr ++ [Text ";"]
+    render (AVarDecCommand varDec) = render varDec
+    render (AExprCommand expr) = render expr ++ [Text ";"]
+    render (ABlockCommand block) = render block
 
 instance Renderable AStructMember where
     render (AStructMemberImport imp) = render imp
@@ -478,6 +487,7 @@ renderBetween start end items = [Text start, Line] ++ intercalate [Line] (fmap r
 renderToString :: [Doc] -> String
 renderToString = concat . (fmap renderToString')
 
+-- TODO DO NOT COMMIT - handle indent
 renderToString' :: Doc -> String
 renderToString' (Text s) = s
 renderToString' Line = "\n"
