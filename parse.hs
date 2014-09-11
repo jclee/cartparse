@@ -1303,10 +1303,10 @@ ptNonComment = do
 toNonCommentEnd :: Parser String
 toNonCommentEnd =
     lookAhead (
-        (eof >> return "")
-         <|> (string "\r")
+         (string "\r")
          <|> (string "\n")
          <|> try (string "/" >> (string "*" <|> string "/"))
+         <|> (eof >> return "")
     )
 
 many1Till :: (Show end) => Parser a -> Parser end -> Parser [a]
