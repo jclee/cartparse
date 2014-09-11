@@ -319,7 +319,6 @@ data Doc =
     Text String
     | Line
     | Space
-    | Elipsis
     deriving (Show)
 
 class Renderable a where
@@ -507,7 +506,6 @@ renderToString' Line = do
     put (indent, True)
     return "\n"
 renderToString' Space = return " "
-renderToString' Elipsis = return "..."
 
 doIndent :: String -> State (Int, Bool) String
 doIndent s = do
