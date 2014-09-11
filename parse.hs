@@ -206,6 +206,7 @@ data AFunctionSignature =
         afsIsStatic :: Bool
       , afsReturnType :: String
       , afsName :: String
+      , afsMember :: Maybe String
       , afsParams :: [AFunctionDecParam]
     }
     deriving (Show)
@@ -394,10 +395,13 @@ instance Renderable AFunctionSignature where
         afsIsStatic=isStatic
       , afsReturnType=returnType
       , afsName=name
+      , afsMember=member
       , afsParams=params
     } = (if isStatic then [Text "static", Space] else [])
         ++ [Text (if returnType == "void" then "function" else "returnType"), Space]
-        ++ [Text name, Text "("]
+        ++ [Text name]
+        ++ maybe [] (\s -> [Text "::", Text s]) member
+        ++ [Text "("]
         ++ intercalate [Text ",", Space] (render <$> params)
         ++ [Text ")"]
 
@@ -585,11 +589,13 @@ pFunctionSignature = do
     isStatic <- optionMaybe pStatic
     returnType <- ((pFunction >> return "void") <|> pIdentifier)
     name <- pIdentifier
+    member <- optionMaybe (pMember >> pIdentifier)
     params <- between pLParen pRParen (sepBy pFunctionDecParam pComma)
     return AFunctionSignature {
         afsIsStatic=(isJust isStatic)
       , afsReturnType=returnType
       , afsName=name
+      , afsMember=member
       , afsParams=params
     }
     <?> "function signature"
@@ -990,6 +996,9 @@ pLt = matchToken' TLt
 
 pLtEq :: TokenParser String
 pLtEq = matchToken' TLtEq
+
+pMember :: TokenParser String
+pMember = matchToken' TMember
 
 pMinus :: TokenParser String
 pMinus = matchToken' TMinus
