@@ -582,7 +582,7 @@ pFunctionDec = do
 
 pFunctionSignature :: TokenParser AFunctionSignature
 pFunctionSignature = do
-    isStatic <- option Nothing (Just <$> (pStatic))
+    isStatic <- optionMaybe pStatic
     returnType <- ((pFunction >> return "void") <|> pIdentifier)
     name <- pIdentifier
     params <- between pLParen pRParen (sepBy pFunctionDecParam pComma)
@@ -644,7 +644,7 @@ pVarInit :: TokenParser AVarInit
 pVarInit = do
     ident <- pIdentifier
     subscripts <- many (between pLBracket pRBracket pInitSubscript)
-    varInit <- option Nothing (Just <$> (pAssign >> pExpr))
+    varInit <- optionMaybe (pAssign >> pExpr)
     return $ AVarInit { aviId=ident, aviSubscripts=subscripts, aviInit=varInit }
 
 pInitSubscript :: TokenParser AVarSubscript
@@ -674,7 +674,7 @@ pIfCommand = do
     _ <- pIf
     testExpr <- between pLParen pRParen pExpr
     trueCommand <- pCommand
-    falseCommand <- option Nothing (Just <$> (pElseCommand))
+    falseCommand <- optionMaybe pElseCommand
     return AIfCommand {
         aicTestExpr=testExpr
       , aicTrueCommand=trueCommand
@@ -699,7 +699,7 @@ pWhileCommand = do
 pReturnCommand :: TokenParser ACommand
 pReturnCommand = do
     _ <- pReturn
-    expr <- option Nothing (Just <$> pExpr)
+    expr <- optionMaybe pExpr
     _ <- pSemicolon
     return $ AReturnCommand expr
 
@@ -878,7 +878,7 @@ pNewExpr = do
 pTypeName :: TokenParser ATypeName
 pTypeName = do
     name <- pIdentifier
-    isPointer <- option False (pMult >> return True)
+    isPointer <- isJust <$> optionMaybe pMult
     return ATypeName { atnName=name, atnIsPointer=isPointer }
     <?> "type name"
 
