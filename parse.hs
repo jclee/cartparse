@@ -1297,10 +1297,17 @@ ptBlockComment = do
 ptNonComment :: Parser PreToken
 ptNonComment = do
     pos <- getPosition
-    s <- many1Till anyChar (try (lookAhead ptLineCommentStart)
-                              <|> try (lookAhead ptBlockCommentStart)
-                              <|> toLineEnding)
+    s <- many1Till anyChar toNonCommentEnd
     return $ (pos, PTContent s)
+
+toNonCommentEnd :: Parser String
+toNonCommentEnd =
+    lookAhead (
+        (eof >> return "")
+         <|> (string "\r")
+         <|> (string "\n")
+         <|> try (string "/" >> (string "*" <|> string "/"))
+    )
 
 many1Till :: (Show end) => Parser a -> Parser end -> Parser [a]
 many1Till p end = do
@@ -1317,8 +1324,8 @@ ptBlockCommentStart = string "/*"
 ptBlockCommentEnd :: Parser String
 ptBlockCommentEnd = string "*/"
 
-toLineEnding :: Parser String
-toLineEnding = try (lookAhead ((eof >> return "") <|> eol))
-
 eol :: Parser String
-eol = try (string "\r\n") <|> string "\r" <|> string "\n" <?> "end of line"
+eol = try (string "\r\n")
+      <|> string "\r"
+      <|> string "\n"
+      <?> "end of line"
