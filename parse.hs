@@ -1,5 +1,6 @@
 import Control.Applicative hiding (many, (<|>))
 import Control.Monad
+import Control.Monad.State
 import Data.Functor.Identity
 import Data.List
 import Data.Maybe
@@ -7,7 +8,7 @@ import System.Directory
 import System.Environment
 import System.FilePath
 import System.IO
-import Text.ParserCombinators.Parsec
+import Text.ParserCombinators.Parsec hiding (State)
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language (javaStyle)
 
@@ -485,14 +486,36 @@ renderBetween start end [] = [Text start, Text end]
 renderBetween start end items = [Text start, Line] ++ intercalate [Line] (fmap render items) ++ [Line, Text end]
 
 renderToString :: [Doc] -> String
-renderToString = concat . (fmap renderToString')
+renderToString docs =
+    concat $ fst $ runState ((mapM renderToString') docs) (0, True)
 
--- TODO DO NOT COMMIT - handle indent
-renderToString' :: Doc -> String
-renderToString' (Text s) = s
-renderToString' Line = "\n"
-renderToString' Space = " "
-renderToString' Elipsis = "..."
+renderToString' :: Doc -> State (Int, Bool) String
+renderToString' (Text s) = do
+    (indent, shouldIndent) <- get
+    let indent' =
+            -- NOTE: Not strictly correct, if
+            -- comments are also Text.
+            if s `elem` ["(", "[", "{"] then
+                indent + 1
+            else if s `elem` [")", "]", "}"] then
+                indent - 1
+            else indent
+    put (indent', shouldIndent)
+    doIndent s
+renderToString' Line = do
+    (indent, _shouldIndent) <- get
+    put (indent, True)
+    return "\n"
+renderToString' Space = return " "
+renderToString' Elipsis = return "..."
+
+doIndent :: String -> State (Int, Bool) String
+doIndent s = do
+    (indent, shouldIndent) <- get
+    put (indent, False)
+    return $ if shouldIndent then
+                 replicate (indent * 4) ' ' ++ s
+             else s
 
 cartParse :: TokenParser Ast
 cartParse = do
@@ -1164,9 +1187,6 @@ lexeme = P.lexeme lexer
 
 reserved :: String -> Parser ()
 reserved = P.reserved lexer
-
-reservedOp :: String -> Parser ()
-reservedOp = P.reservedOp lexer
 
 identifier :: Parser String
 identifier = P.identifier lexer
