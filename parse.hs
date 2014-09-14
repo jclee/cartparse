@@ -722,11 +722,10 @@ instance Renderable AExpr where
         aieInt=int_
       , aieIntDecs=intDecs
     } = [Text (intDecs, show int_)]
-    -- TODO: escapes OK?
     render AStringExpr {
         aseString=s
       , aseStringDecs=stringDecs
-    } = [Text (stringDecs, show s)]
+    } = [Text (stringDecs, formatStringLiteral s)]
     render AIdentifierExpr {
         aieId=ident
       , aieIdDecs=idDecs
@@ -794,6 +793,16 @@ instance Renderable AExpr where
         ++ render typeName
         ++ [Text (rParenDecs, ")"), Space]
         ++ render castExpr
+
+formatStringLiteral :: String -> String
+formatStringLiteral s =
+  concat $ ["\""] ++ (escapeChar <$> s) ++ ["\""]
+  where
+    escapeChar '"' = "\\\""
+    escapeChar '\\' = "\\\\"
+    escapeChar '\r' = "\\r"
+    escapeChar '\n' = "\\n"
+    escapeChar ch = [ch]
 
 renderComma :: [Decoration] -> [Doc]
 renderComma decs = [Text (decs, ","), Space]
