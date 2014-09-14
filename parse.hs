@@ -169,9 +169,8 @@ instance Show Tok where
 data Ast = Ast [ATopLevel]
     deriving (Show)
 
--- TODO - need to preserve constituent token decorations...
 data ATopLevel =
-    AEof
+    AEof [Decoration]
     | AFunctionDec {
         afdSignature :: AFunctionSignature
       , afdBlock :: ABlock
@@ -181,13 +180,28 @@ data ATopLevel =
     | AEnumDec {
         aedName :: String
       , aedValues :: [String]
+      , aedEnumDecs :: [Decoration]
+      , aedNameDecs :: [Decoration]
+      , aedLBraceDecs :: [Decoration]
+      , aedValueDecs :: [[Decoration]]
+      , aedCommaDecs :: [[Decoration]]
+      , aedRBraceDecs :: [Decoration]
+      , aedSemicolonDecs :: [Decoration]
     }
     | AStructDec {
         asdName :: String
       , asdMembers :: [AStructMember]
+      , asdStructDecs :: [Decoration]
+      , asdNameDecs :: [Decoration]
+      , asdLBraceDecs :: [Decoration]
+      , asdRBraceDecs :: [Decoration]
+      , asdSemicolonDecs :: [Decoration]
     }
     | AExportDec {
         axdName :: String
+      , axdExportDecs :: [Decoration]
+      , axdNameDecs :: [Decoration]
+      , axdSemicolonDecs :: [Decoration]
     }
     deriving (Show)
 
@@ -197,8 +211,15 @@ data AStructMember =
     deriving (Show)
 
 data AImportDec =
-    AImportFunctionSig AFunctionSignature
-    | AImportVarDec AVarDec
+    AImportFunctionSig {
+        aifsFunctionSig :: AFunctionSignature
+      , aifsImportDecs :: [Decoration]
+      , aifsSemicolonDecs :: [Decoration]
+    }
+    | AImportVarDec {
+        aivdVarDec :: AVarDec
+      , aivdImportDecs :: [Decoration]
+    }
     deriving (Show)
 
 data AFunctionSignature =
@@ -208,12 +229,23 @@ data AFunctionSignature =
       , afsName :: String
       , afsMember :: Maybe String
       , afsParams :: [AFunctionDecParam]
+      , afsStaticDecs :: [Decoration]
+      , afsReturnTypeDecs :: [Decoration]
+      , afsNameDecs :: [Decoration]
+      , afsMemberDecs :: [Decoration]
+      , afsMemberNameDecs :: [Decoration]
+      , afsLParenDecs :: [Decoration]
+      , afsCommaDecs :: [[Decoration]]
+      , afsRParenDecs :: [Decoration]
     }
     deriving (Show)
 
 data AFunctionDecParam =
     AFunctionDecExtenderParam {
         afdepName :: String
+      , afdepThisDecs :: [Decoration]
+      , afdepNameDecs :: [Decoration]
+      , afdepMultDecs :: [Decoration]
     }
     | AFunctionDecRegularParam {
         afdrpTypeName :: ATypeName
@@ -221,7 +253,12 @@ data AFunctionDecParam =
     }
     deriving (Show)
 
-data ABlock = ABlock [ACommand]
+data ABlock =
+    ABlock {
+        abCommands :: [ACommand]
+      , abLBraceDecs :: [Decoration]
+      , abRBraceDecs :: [Decoration]
+    }
     deriving (Show)
 
 data ACommand =
@@ -229,14 +266,31 @@ data ACommand =
         aicTestExpr :: AExpr
       , aicTrueCommand :: ACommand
       , aicFalseCommand :: Maybe ACommand
+      , aicIfDecs :: [Decoration]
+      , aicLParenDecs :: [Decoration]
+      , aicRParenDecs :: [Decoration]
     }
+    | AElseCommand {
+          aecCommand :: ACommand
+        , aecElseDecs :: [Decoration]
+      }
     | AWhileCommand {
           awcTestExpr :: AExpr
         , awcCommand :: ACommand
+        , awcWhileDecs :: [Decoration]
+        , awcLParenDecs :: [Decoration]
+        , awcRParenDecs :: [Decoration]
       }
-    | AReturnCommand (Maybe AExpr)
+    | AReturnCommand {
+          arcExpr :: Maybe AExpr
+        , arcReturnDecs :: [Decoration]
+        , arcSemicolonDecs :: [Decoration]
+      }
     | AVarDecCommand AVarDec
-    | AExprCommand AExpr
+    | AExprCommand {
+          aecExpr :: AExpr
+        , aecSemicolonDecs :: [Decoration]
+      }
     | ABlockCommand ABlock
     deriving (Show)
 
@@ -244,6 +298,8 @@ data AVarDec =
     AVarDec {
         avdTypeName :: ATypeName
       , avdVars :: [AVarInit]
+      , avdCommaDecs :: [[Decoration]]
+      , avdSemicolonDecs :: [Decoration]
     }
     deriving (Show)
 
@@ -252,56 +308,103 @@ data AVarInit =
         aviId :: String
       , aviSubscripts :: [AVarSubscript]
       , aviInit :: Maybe AExpr
+      , aviIdDecs :: [Decoration]
+      , aviLBracketDecs :: [[Decoration]]
+      , aviRBracketDecs :: [[Decoration]]
+      , aviAssignDecs :: [Decoration]
     }
     deriving (Show)
 
 data AVarSubscript =
-    AVSEmpty
-    | AVSId String
-    | AVSInt Integer
+    AVarSubscriptEmpty
+    | AVarSubscriptId {
+          avsidId :: String
+        , avsidIdDecs :: [Decoration]
+      }
+    | AVarSubscriptInt {
+          avsiInt :: Integer
+        , avsiIntDecs :: [Decoration]
+      }
     deriving (Show)
 
 data AExpr =
-    AFalse
-    | ATrue
-    | AThisExpr
+    AFalseExpr {
+        afeFalseDecs :: [Decoration]
+    }
+    | ATrueExpr {
+          ateTrueDecs :: [Decoration]
+      }
+    | AThisExpr {
+          ateThisDecs :: [Decoration]
+      }
     | ANewExpr {
           aneTypeName :: ATypeName
         , aneSizeExpr :: AExpr
+        , aneNewDecs :: [Decoration]
+        , aneLBracketDecs :: [Decoration]
+        , aneRBracketDecs :: [Decoration]
       }
-    | AFloatExpr Double
-    | AIntExpr Integer
-    | AStringExpr String
-    | AIdentifierExpr String
+    | AFloatExpr {
+          afeFloat :: Double
+        , afeFloatDecs :: [Decoration]
+      }
+    | AIntExpr {
+          aieInt :: Integer
+        , aieIntDecs :: [Decoration]
+      }
+    | AStringExpr {
+          aseString :: String
+        , aseStringDecs :: [Decoration]
+      }
+    | AIdentifierExpr {
+          aieId :: String
+        , aieIdDecs :: [Decoration]
+      }
     | AIndexExpr {
           aieExpr :: AExpr
         , aieIndexExpr :: AExpr
+        , aieLBracketDecs :: [Decoration]
+        , aieRBracketDecs :: [Decoration]
       }
     | ACallExpr {
           aceFunctionExpr :: AExpr
         , aceParams :: [AExpr]
+        , aceLParenDecs :: [Decoration]
+        , aceRParenDecs :: [Decoration]
+        , aceCommaDecs :: [[Decoration]]
       }
     | AMemberExpr {
           ameExpr :: AExpr
         , ameMember :: String
+        , ameDotDecs :: [Decoration]
+        , ameMemberDecs :: [Decoration]
       }
     | AUnaryOpExpr {
           auoeExpr :: AExpr
         , auoeOp :: String
+        , auoeOpDecs :: [Decoration]
       }
     | APostOpExpr {
           apoeExpr :: AExpr
         , apoeOp :: String
+        , apoeOpDecs :: [Decoration]
       }
     | ABinOpExpr {
           aboeExpr1 :: AExpr
         , aboeExpr2 :: AExpr
         , aboeOp :: String
+        , aboeOpDecs :: [Decoration]
       }
-    | AParenExpr AExpr
+    | AParenExpr {
+          apeExpr :: AExpr
+        , apeLParenDecs :: [Decoration]
+        , apeRParenDecs :: [Decoration]
+      }
     | ACastExpr {
           aceTypeName :: ATypeName
         , aceCastExpr :: AExpr
+        , aceLParenDecs :: [Decoration]
+        , aceRParenDecs :: [Decoration]
       }
     deriving (Show)
 
@@ -309,15 +412,18 @@ data ATypeName =
     ATypeName {
         atnName :: String
       , atnIsPointer :: Bool
+      , atnNameDecs :: [Decoration]
+      , atnMultDecs :: Maybe [Decoration]
     }
     deriving (Show)
 
 type TokenParser a = GenParser Token () a
+type TokenDecParser a = TokenParser ([Decoration], a)
 type PreTokenParser a = GenParser PreToken () a
 
 -- Data.ByteString might be more performant?
 data Doc =
-    Text String
+    Text ([Decoration], String)
     | Line
     | Space
     deriving (Show)
@@ -329,7 +435,7 @@ instance Renderable Ast where
     render (Ast topLevels) = concat (render <$> topLevels)
 
 instance Renderable ATopLevel where
-    render AEof = [Text ""]
+    render (AEof decs) = [Text (decs, "")]
     render AFunctionDec {
         afdSignature=signature
       , afdBlock=block
@@ -339,47 +445,138 @@ instance Renderable ATopLevel where
     render AEnumDec {
         aedName=name
       , aedValues=values
-    } = [Text "enum", Space, Text name, Space, Text "{"] ++ renderValues values ++ [Text "}", Text ";", Line]
-        where
-          renderValues [] = []
-          renderValues items = [Line] ++ intercalate [Text ",", Line] ((:[]) . Text <$> items) ++ [Line]
+      , aedEnumDecs=enumDecs
+      , aedNameDecs=nameDecs
+      , aedLBraceDecs=lBraceDecs
+      , aedValueDecs=valueDecs
+      , aedCommaDecs=commaDecs
+      , aedRBraceDecs=rBraceDecs
+      , aedSemicolonDecs=semicolonDecs
+    } = [
+          Text (enumDecs, "enum")
+        , Space
+        , Text (nameDecs, name)
+        , Space
+        , Text (lBraceDecs, "{")
+        ]
+        ++ renderEnumValues values valueDecs commaDecs
+        ++ [
+          Text (rBraceDecs, "}")
+        , Text (semicolonDecs, ";")
+        , Line
+        ]
     render AStructDec {
         asdName=name
       , asdMembers=members
-    } = [Text "struct", Space, Text name, Space] ++ renderBetween "{" "}" members ++ [Text ";", Line]
+      , asdStructDecs=structDecs
+      , asdNameDecs=nameDecs
+      , asdLBraceDecs=lBraceDecs
+      , asdRBraceDecs=rBraceDecs
+      , asdSemicolonDecs=semicolonDecs
+    } = [
+          Text (structDecs, "struct")
+        , Space
+        , Text (nameDecs, name)
+        , Space
+        ]
+        ++ renderBetween (lBraceDecs, "{") (rBraceDecs, "}") members
+        ++ [Text (semicolonDecs, ";"), Line]
     render AExportDec {
         axdName=name
-    } = [Text "export", Space, Text name, Text ";", Line]
+      , axdExportDecs=exportDecs
+      , axdNameDecs=nameDecs
+      , axdSemicolonDecs=semicolonDecs
+    } = [
+          Text (exportDecs, "export")
+        , Space
+        , Text (nameDecs, name)
+        , Text (semicolonDecs, ";")
+        , Line
+        ]
+
+renderEnumValues :: [String] -> [[Decoration]] -> [[Decoration]] -> [Doc]
+renderEnumValues [] [] [] = []
+renderEnumValues values valueDecs commaDecs =
+  [Line] ++ renderInterleaved valueDocs commaDocs ++ [Line]
+  where
+    valueDocs = (\p -> [Text p]) <$> zip valueDecs values
+    commaDocs = renderCommaLine <$> commaDecs
+    renderCommaLine dec = [Text (dec, ","), Line]
 
 instance Renderable ABlock where
-    render (ABlock []) = [Text "{", Text "}"]
-    render (ABlock commands) =
-        [Text "{", Line]
+    render ABlock {
+        abCommands=[]
+      , abLBraceDecs=lBraceDecs
+      , abRBraceDecs=rBraceDecs
+    } = [Text (lBraceDecs, "{") , Text (rBraceDecs, "}")]
+    render ABlock {
+        abCommands=commands
+      , abLBraceDecs=lBraceDecs
+      , abRBraceDecs=rBraceDecs
+    } = [Text (lBraceDecs, "{"), Line]
         ++ intercalate [Line] (render <$> commands)
-        ++ [Line, Text "}"]
+        ++ [Line, Text (rBraceDecs, "}")]
 
 instance Renderable ACommand where
     render AIfCommand {
         aicTestExpr=testExpr
       , aicTrueCommand=trueCommand
       , aicFalseCommand=falseCommand
-    } = [Text "if", Space, Text "("]
+      , aicIfDecs=ifDecs
+      , aicLParenDecs=lParenDecs
+      , aicRParenDecs=rParenDecs
+    } = [
+          Text (ifDecs, "if")
+        , Space
+        , Text (lParenDecs, "(")
+        ]
         ++ render testExpr
-        ++ [Text ")", Space]
+        ++ [Text (rParenDecs, ")"), Space]
         ++ render trueCommand
-        ++ maybe [] (\x -> [Space, Text "else", Space] ++ render x) falseCommand
+        ++ maybe [] render falseCommand
+    render AElseCommand {
+          aecCommand=command
+        , aecElseDecs=elseDecs
+      } = [
+            Space
+          , Text (elseDecs, "else")
+          , Space
+          ]
+          ++ render command
     render AWhileCommand {
         awcTestExpr=testExpr
       , awcCommand=command
-    } = [Text "while", Space, Text "("]
+      , awcWhileDecs=whileDecs
+      , awcLParenDecs=lParenDecs
+      , awcRParenDecs=rParenDecs
+    } = [
+          Text (whileDecs, "while")
+        , Space
+        , Text (lParenDecs, "(")
+        ]
         ++ render testExpr
-        ++ [Text ")", Space]
+        ++ [Text (rParenDecs, ")"), Space]
         ++ render command
-    render (AReturnCommand Nothing) = [Text "return", Text ";"]
-    render (AReturnCommand (Just expr)) =
-      [Text "return", Space] ++ render expr ++ [Text ";"]
+    render AReturnCommand {
+        arcExpr=Nothing
+      , arcReturnDecs=returnDecs
+      , arcSemicolonDecs=semicolonDecs
+    } = [
+          Text (returnDecs, "return")
+        , Text (semicolonDecs, ";")
+        ]
+    render AReturnCommand {
+        arcExpr=Just expr
+      , arcReturnDecs=returnDecs
+      , arcSemicolonDecs=semicolonDecs
+    } = [Text (returnDecs, "return")]
+        ++ render expr
+        ++ [Text (semicolonDecs, ";")]
     render (AVarDecCommand varDec) = render varDec
-    render (AExprCommand expr) = render expr ++ [Text ";"]
+    render AExprCommand {
+        aecExpr=expr
+      , aecSemicolonDecs=semicolonDecs
+    } = render expr ++ [Text (semicolonDecs, ";")]
     render (ABlockCommand block) = render block
 
 instance Renderable AStructMember where
@@ -387,8 +584,17 @@ instance Renderable AStructMember where
     render (AStructMemberVar var) = render var
 
 instance Renderable AImportDec where
-    render (AImportFunctionSig sig) = [Text "import", Space] ++ render sig
-    render (AImportVarDec varDec) = [Text "import", Space] ++ render varDec
+    render AImportFunctionSig {
+        aifsFunctionSig=functionSig
+      , aifsImportDecs=importDecs
+      , aifsSemicolonDecs=semicolonDecs
+    } = [Text (importDecs, "import"), Space]
+        ++ render functionSig
+        ++ [Text (semicolonDecs, ";")]
+    render AImportVarDec {
+        aivdVarDec=varDec
+      , aivdImportDecs=importDecs
+    } = [Text (importDecs, "import"), Space] ++ render varDec
 
 instance Renderable AFunctionSignature where
     render AFunctionSignature {
@@ -397,18 +603,37 @@ instance Renderable AFunctionSignature where
       , afsName=name
       , afsMember=member
       , afsParams=params
-    } = (if isStatic then [Text "static", Space] else [])
-        ++ [Text (if returnType == "void" then "function" else "returnType"), Space]
-        ++ [Text name]
-        ++ maybe [] (\s -> [Text "::", Text s]) member
-        ++ [Text "("]
-        ++ intercalate [Text ",", Space] (render <$> params)
-        ++ [Text ")"]
+      , afsStaticDecs=staticDecs
+      , afsReturnTypeDecs=returnTypeDecs
+      , afsMemberDecs=memberDecs
+      , afsNameDecs=nameDecs
+      , afsMemberNameDecs=memberNameDecs
+      , afsLParenDecs=lParenDecs
+      , afsCommaDecs=commaDecs
+      , afsRParenDecs=rParenDecs
+    } = (if isStatic then [Text (staticDecs, "static"), Space] else [])
+        ++ [Text (returnTypeDecs, if returnType == "void" then "function" else "returnType"), Space]
+        ++ [Text (nameDecs, name)]
+        ++ maybe [] (\s -> [Text (memberDecs, "::"), Text (memberNameDecs, s)]) member
+        ++ [Text (lParenDecs, "(")]
+        ++ renderInterleaved paramDocs commaDocs
+        ++ [Text (rParenDecs, ")")]
+        where
+          paramDocs = render <$> params
+          commaDocs = renderComma <$> commaDecs
 
 instance Renderable AFunctionDecParam where
     render AFunctionDecExtenderParam {
         afdepName=name
-    } = [Text "this", Space, Text name, Text "*"]
+      , afdepThisDecs=thisDecs
+      , afdepNameDecs=nameDecs
+      , afdepMultDecs=multDecs
+    } = [
+          Text (thisDecs, "this")
+        , Space
+        , Text (nameDecs, name)
+        , Text (multDecs, "*")
+        ]
     render AFunctionDecRegularParam {
         afdrpTypeName=typeName
       , afdrpVarInit=varInit
@@ -418,73 +643,173 @@ instance Renderable AVarDec where
     render AVarDec {
         avdTypeName=name
       , avdVars=vars
-    } = render name ++ [Space] ++ intercalate [Text ",", Space] (fmap render vars) ++ [Text ";"]
+      , avdCommaDecs=commaDecs
+      , avdSemicolonDecs=semicolonDecs
+    } = render name
+        ++ [Space]
+        ++ renderInterleaved varDocs sepDocs
+        ++ [Text (semicolonDecs, ";")]
+        where
+          varDocs = render <$> vars
+          sepDocs = renderComma <$> commaDecs
 
 instance Renderable ATypeName where
     render ATypeName {
         atnName=name
       , atnIsPointer=isPointer
-    } = [Text name] ++ (if isPointer then [Space, Text "*"] else [])
+      , atnNameDecs=nameDecs
+      , atnMultDecs=multDecs
+    } = [Text (nameDecs, name)]
+        ++ (if isPointer then
+              [Space, Text (maybe [] id multDecs, "*")]
+            else [])
 
 instance Renderable AVarInit where
     render AVarInit {
         aviId=varId
       , aviSubscripts=subscripts
       , aviInit=initializer
-    } =
-        [Text varId]
-        ++ (concat $ render <$> subscripts)
-        ++ (maybe [] (\e -> [Space, Text "=", Space] ++ render e) initializer)
+      , aviIdDecs=idDecs
+      , aviLBracketDecs=lBracketDecs
+      , aviRBracketDecs=rBracketDecs
+      , aviAssignDecs=assignDecs
+    } = [Text (idDecs, varId)]
+        ++ (concat $ zipWith3 renderSubscript lBracketDecs subscripts rBracketDecs)
+        ++ maybe [] (\e -> [Space, Text (assignDecs, "="), Space] ++ render e) initializer
+        where
+          renderSubscript lbDecs subscript rbDecs =
+            [Text (lbDecs, "[")]
+            ++ render subscript
+            ++ [Text (rbDecs, "]")]
 
 instance Renderable AVarSubscript where
-    render AVSEmpty = [Text "[", Text "]"]
-    render (AVSId s) = [Text "[", Text s, Text "]"]
-    render (AVSInt i) = [Text "[", Text $ show i, Text "]"]
+    render AVarSubscriptEmpty = []
+    render AVarSubscriptId {
+      avsidId=ident
+    , avsidIdDecs=idDecs
+    } = [Text (idDecs, ident)]
+    render AVarSubscriptInt {
+      avsiInt=int_
+    , avsiIntDecs=intDecs
+    } = [Text (intDecs, show int_)]
 
 instance Renderable AExpr where
-    render AFalse = [Text "false"]
-    render ATrue = [Text "true"]
-    render AThisExpr = [Text "this"]
+    render AFalseExpr {
+        afeFalseDecs=falseDecs
+    } = [Text (falseDecs, "false")]
+    render ATrueExpr {
+        ateTrueDecs=trueDecs
+    } = [Text (trueDecs, "true")]
+    render AThisExpr {
+        ateThisDecs=thisDecs
+    } = [Text (thisDecs, "this")]
     render ANewExpr {
         aneTypeName=name
       , aneSizeExpr=expr
-    } = [Text "new", Space] ++ render name ++ [Text "["] ++ render expr ++ [Text "]"]
-    render (AFloatExpr d) = [Text $ show d]
-    render (AIntExpr i) = [Text $ show i]
-    render (AStringExpr s) = [Text $ show s] -- TODO: escapes OK?
-    render (AIdentifierExpr s) = [Text $ s]
+      , aneNewDecs=newDecs
+      , aneLBracketDecs=lBracketDecs
+      , aneRBracketDecs=rBracketDecs
+    } = [Text (newDecs, "new"), Space]
+        ++ render name
+        ++ [Text (lBracketDecs, "[")]
+        ++ render expr
+        ++ [Text (rBracketDecs, "]")]
+    render AFloatExpr {
+        afeFloat=d
+      , afeFloatDecs=floatDecs
+    } = [Text $ (floatDecs, show d)]
+    render AIntExpr {
+        aieInt=int_
+      , aieIntDecs=intDecs
+    } = [Text (intDecs, show int_)]
+    -- TODO: escapes OK?
+    render AStringExpr {
+        aseString=s
+      , aseStringDecs=stringDecs
+    } = [Text (stringDecs, show s)]
+    render AIdentifierExpr {
+        aieId=ident
+      , aieIdDecs=idDecs
+    } = [Text (idDecs, ident)]
     render AIndexExpr {
         aieExpr=expr
       , aieIndexExpr=indexExpr
-    } = render expr ++ [Text "["] ++ render indexExpr ++ [Text "]"]
+      , aieLBracketDecs=lBracketDecs
+      , aieRBracketDecs=rBracketDecs
+    } = render expr
+        ++ [Text (lBracketDecs, "[")]
+        ++ render indexExpr
+        ++ [Text (rBracketDecs, "]")]
     render ACallExpr {
         aceFunctionExpr=expr
       , aceParams=params
-    } = render expr ++ [Text "("] ++ intercalate [Text ",", Space] (render <$> params) ++ [Text ")"]
+      , aceLParenDecs=lParenDecs
+      , aceRParenDecs=rParenDecs
+      , aceCommaDecs=commaDecs
+    } = render expr
+        ++ [Text (lParenDecs, "(")]
+        ++ renderInterleaved paramDocs commaDocs
+        ++ [Text (rParenDecs, ")")]
+        where
+          paramDocs = render <$> params
+          commaDocs = renderComma <$> commaDecs
     render AMemberExpr {
         ameExpr=expr
       , ameMember=member
-    } = render expr ++ [Text ".", Text member]
+      , ameDotDecs=dotDecs
+      , ameMemberDecs=memberDecs
+    } = render expr
+        ++ [Text (dotDecs, "."), Text (memberDecs, member)]
     render AUnaryOpExpr {
         auoeExpr=expr
       , auoeOp=op
-    } = [Text op] ++ render expr
+      , auoeOpDecs=opDecs
+    } = [Text (opDecs, op)] ++ render expr
     render APostOpExpr {
         apoeExpr=expr
       , apoeOp=op
-    } = render expr ++ [Text op]
+      , apoeOpDecs=opDecs
+    } = render expr ++ [Text (opDecs, op)]
     render ABinOpExpr {
         aboeExpr1=expr1
       , aboeExpr2=expr2
       , aboeOp=op
-    } = render expr1 ++ [Space, Text op, Space] ++ render expr2
-    render (AParenExpr expr) = [Text "("] ++ render expr ++ [Text ")"]
+      , aboeOpDecs=opDecs
+    } = render expr1
+        ++ [Space, Text (opDecs, op), Space]
+        ++ render expr2
+    render AParenExpr {
+        apeExpr=expr
+      , apeLParenDecs=lParenDecs
+      , apeRParenDecs=rParenDecs
+    } = [Text (lParenDecs, "(")]
+        ++ render expr
+        ++ [Text (rParenDecs, ")")]
     render ACastExpr {
         aceTypeName=typeName
       , aceCastExpr=castExpr
-    } = [Text "("] ++ render typeName ++ [Text ")", Space] ++ render castExpr
+      , aceLParenDecs=lParenDecs
+      , aceRParenDecs=rParenDecs
+    } = [Text (lParenDecs, "(")]
+        ++ render typeName
+        ++ [Text (rParenDecs, ")"), Space]
+        ++ render castExpr
 
-renderBetween :: (Renderable a) => String -> String -> [a] -> [Doc]
+renderComma :: [Decoration] -> [Doc]
+renderComma decs = [Text (decs, ","), Space]
+
+renderInterleaved :: [[Doc]] -> [[Doc]] -> [Doc]
+renderInterleaved [] [] = []
+renderInterleaved [val] [] = val
+renderInterleaved (valh:valt) (seph:sept) =
+  valh ++ seph ++ renderInterleaved valt sept
+renderInterleaved vals seps =
+  error $ "wrong number of interleaved args"
+    ++ (show $ length vals)
+    ++ " "
+    ++ (show $ length seps)
+
+renderBetween :: (Renderable a) => ([Decoration], String) -> ([Decoration], String) -> [a] -> [Doc]
 renderBetween start end [] = [Text start, Text end]
 renderBetween start end items = [Text start, Line] ++ intercalate [Line] (fmap render items) ++ [Line, Text end]
 
@@ -493,7 +818,7 @@ renderToString docs =
     concat $ fst $ runState ((mapM renderToString') docs) (0, True)
 
 renderToString' :: Doc -> State (Int, Bool) String
-renderToString' (Text s) = do
+renderToString' (Text (decs, s)) = do
     (indent, shouldIndent) <- get
     let indent' =
             -- NOTE: Not strictly correct, if
@@ -531,48 +856,73 @@ pTopLevel =
     <|> pStructDec
     <|> pExportDec
     <|> (ATopLevelImportDec <$> pImportDec)
-    <|> (pEof >> return AEof)
+    <|> pTopLevelEof
     <|> (try pTopLevelVarDec)
     <|> pFunctionDec
     <?> "toplevel declaration"
 
+pTopLevelEof :: TokenParser ATopLevel
+pTopLevelEof = do
+    (decs, _) <- pEof
+    return $ AEof decs
+
 pStructDec :: TokenParser ATopLevel
 pStructDec = do
-    _ <- pStruct
-    name <- pIdentifier
-    members <- between pLBrace pRBrace (many pStructDecMember)
-    _ <- pSemicolon
+    (structDecs, _) <- pStruct
+    (nameDecs, name) <- pIdentifier
+    (lBraceDecs, rBraceDecs, members) <- pBetweenDecs pLBrace pRBrace (many pStructDecMember)
+    (semicolonDecs, _) <- pSemicolon
     return AStructDec {
         asdName=name
       , asdMembers=members
+      , asdStructDecs=structDecs
+      , asdNameDecs=nameDecs
+      , asdLBraceDecs=lBraceDecs
+      , asdRBraceDecs=rBraceDecs
+      , asdSemicolonDecs=semicolonDecs
     }
 
 pStructDecMember :: TokenParser AStructMember
 pStructDecMember =
     (AStructMemberImport <$> pImportDec)
-    <|> (AStructMemberVar <$> pVarDec)
-    <?> "structure member"
+      <|> (AStructMemberVar <$> pVarDec)
+      <?> "structure member"
 
 pExportDec :: TokenParser ATopLevel
 pExportDec = do
-    _ <- pExport
-    name <- pIdentifier
-    _ <- pSemicolon
-    return AExportDec { axdName=name }
+    (exportDecs, _) <- pExport
+    (nameDecs, name) <- pIdentifier
+    (semicolonDecs, _) <- pSemicolon
+    return AExportDec {
+        axdName=name
+      , axdExportDecs=exportDecs
+      , axdNameDecs=nameDecs
+      , axdSemicolonDecs=semicolonDecs
+    }
 
 pImportDec :: TokenParser AImportDec
 pImportDec = do
-    _ <- pImport
-    (try pImportFunctionDec) <|> pImportVarDec
+    (importDecs, _) <- pImport
+    (try $ pImportFunctionDec importDecs)
+      <|> pImportVarDec importDecs
 
-pImportFunctionDec :: TokenParser AImportDec
-pImportFunctionDec = do
+pImportFunctionDec :: [Decoration] -> TokenParser AImportDec
+pImportFunctionDec importDecs = do
     functionSig <- pFunctionSignature
-    _ <- pSemicolon
-    return $ AImportFunctionSig functionSig
+    (semicolonDecs, _) <- pSemicolon
+    return AImportFunctionSig {
+        aifsFunctionSig=functionSig
+      , aifsImportDecs=importDecs
+      , aifsSemicolonDecs=semicolonDecs
+    }
 
-pImportVarDec :: TokenParser AImportDec
-pImportVarDec = AImportVarDec <$> pVarDec
+pImportVarDec :: [Decoration] -> TokenParser AImportDec
+pImportVarDec importDecs = do
+    varDec <- pVarDec
+    return AImportVarDec {
+        aivdVarDec=varDec
+      , aivdImportDecs=importDecs
+    }
 
 pFunctionDec :: TokenParser ATopLevel
 pFunctionDec = do
@@ -586,17 +936,28 @@ pFunctionDec = do
 
 pFunctionSignature :: TokenParser AFunctionSignature
 pFunctionSignature = do
-    isStatic <- optionMaybe pStatic
-    returnType <- ((pFunction >> return "void") <|> pIdentifier)
-    name <- pIdentifier
-    member <- optionMaybe (pMember >> pIdentifier)
-    params <- between pLParen pRParen (sepBy pFunctionDecParam pComma)
+    maybeStatic <- optionMaybe pStatic
+    (returnTypeDecs, returnType) <- ((pFunction >>= \(decs, _) -> return (decs,"void")) <|> pIdentifier)
+    (nameDecs, name) <- pIdentifier
+    maybeMember <- optionMaybe (do
+        (memberDecs, _) <- pMember
+        (memberNameDecs, memberName) <- pIdentifier
+        return (memberDecs, memberNameDecs, memberName))
+    (lParenDecs, rParenDecs, (commaDecs, params)) <- pBetweenDecs pLParen pRParen (pSepByDecs pFunctionDecParam pComma)
     return AFunctionSignature {
-        afsIsStatic=(isJust isStatic)
+        afsIsStatic=isJust maybeStatic
       , afsReturnType=returnType
       , afsName=name
-      , afsMember=member
+      , afsMember=(\(_, _, memberName) -> memberName) <$> maybeMember
       , afsParams=params
+      , afsStaticDecs=maybe [] id $ fst <$> maybeStatic
+      , afsReturnTypeDecs=returnTypeDecs
+      , afsMemberDecs=maybe [] id $ (\(memberDecs, _, _) -> memberDecs) <$> maybeMember
+      , afsNameDecs=nameDecs
+      , afsMemberNameDecs=maybe [] id $ (\(_, memberNameDecs, _) -> memberNameDecs) <$> maybeMember
+      , afsLParenDecs=lParenDecs
+      , afsCommaDecs=commaDecs
+      , afsRParenDecs=rParenDecs
     }
     <?> "function signature"
 
@@ -608,11 +969,14 @@ pFunctionDecParam =
 
 pFunctionDecExtenderParam :: TokenParser AFunctionDecParam
 pFunctionDecExtenderParam = do
-    _ <- pThis
-    name <- pIdentifier
-    _ <- pMult
+    (thisDecs, _) <- pThis
+    (nameDecs, name) <- pIdentifier
+    (multDecs, _) <- pMult
     return AFunctionDecExtenderParam {
         afdepName=name
+      , afdepThisDecs=thisDecs
+      , afdepNameDecs=nameDecs
+      , afdepMultDecs=multDecs
     }
 
 pFunctionDecRegularParam :: TokenParser AFunctionDecParam
@@ -626,13 +990,20 @@ pFunctionDecRegularParam = do
 
 pEnumDec :: TokenParser ATopLevel
 pEnumDec = do
-    _ <- pEnum
-    name <- pIdentifier
-    values <- between pLBrace pRBrace (sepBy1 pIdentifier pComma)
-    _ <- pSemicolon
+    (enumDecs, _) <- pEnum
+    (nameDecs, name) <- pIdentifier
+    (lBraceDecs, rBraceDecs, (commaDecs, values)) <- pBetweenDecs pLBrace pRBrace (pSepBy1Decs pIdentifier pComma)
+    (semicolonDecs, _) <- pSemicolon
     return AEnumDec {
         aedName=name
-      , aedValues=values
+      , aedValues=snd <$> values
+      , aedEnumDecs=enumDecs
+      , aedNameDecs=nameDecs
+      , aedLBraceDecs=lBraceDecs
+      , aedValueDecs=fst <$> values
+      , aedCommaDecs=commaDecs
+      , aedRBraceDecs=rBraceDecs
+      , aedSemicolonDecs=semicolonDecs
     }
 
 pTopLevelVarDec :: TokenParser ATopLevel
@@ -641,28 +1012,64 @@ pTopLevelVarDec = ATopLevelVarDec <$> pVarDec
 pVarDec :: TokenParser AVarDec
 pVarDec = do
     typeName <- pTypeName
-    vars <- sepBy1 pVarInit pComma
-    _ <- pSemicolon
-    return $ AVarDec { avdTypeName=typeName, avdVars=vars }
+    (commaDecs, vars) <- pSepBy1Decs pVarInit pComma
+    (semicolonDecs, _) <- pSemicolon
+    return AVarDec {
+        avdTypeName=typeName
+      , avdVars=vars
+      , avdCommaDecs=commaDecs
+      , avdSemicolonDecs=semicolonDecs
+    }
     <?> "variable declaration"
 
 pVarInit :: TokenParser AVarInit
 pVarInit = do
-    ident <- pIdentifier
-    subscripts <- many (between pLBracket pRBracket pInitSubscript)
-    varInit <- optionMaybe (pAssign >> pExpr)
-    return $ AVarInit { aviId=ident, aviSubscripts=subscripts, aviInit=varInit }
+    (idDecs, ident) <- pIdentifier
+    subscripts <- many (pBetweenDecs pLBracket pRBracket pInitSubscript)
+    maybeVarInit <- optionMaybe (do
+        (assignDecs, _) <- pAssign
+        expr <- pExpr
+        return (assignDecs, expr))
+    return AVarInit {
+        aviId=ident
+      , aviSubscripts=(\(_, _, c) -> c) <$> subscripts
+      , aviInit=snd <$> maybeVarInit
+      , aviIdDecs=idDecs
+      , aviLBracketDecs=(\(a, _, _) -> a) <$> subscripts
+      , aviRBracketDecs=(\(_, b, _) -> b) <$> subscripts
+      , aviAssignDecs=maybe [] id $ fst <$> maybeVarInit
+    }
 
 pInitSubscript :: TokenParser AVarSubscript
 pInitSubscript = do
-    (AVSId <$> pIdentifier)
-    <|> (AVSInt <$> pInteger)
-    <|> return AVSEmpty
+    pInitSubscriptId
+    <|> pInitSubscriptInt
+    <|> return AVarSubscriptEmpty
+
+pInitSubscriptId :: TokenParser AVarSubscript
+pInitSubscriptId = do
+    (idDecs, ident) <- pIdentifier
+    return AVarSubscriptId {
+        avsidId=ident
+      , avsidIdDecs=idDecs
+    }
+
+pInitSubscriptInt :: TokenParser AVarSubscript
+pInitSubscriptInt = do
+    (intDecs, int) <- pInteger
+    return AVarSubscriptInt {
+        avsiInt=int
+      , avsiIntDecs=intDecs
+    }
 
 pBlock :: TokenParser ABlock
 pBlock = do
-    commands <- between pLBrace pRBrace (many pCommand)
-    return $ ABlock commands
+    (lBraceDecs, rBraceDecs, commands) <- pBetweenDecs pLBrace pRBrace (many pCommand)
+    return ABlock {
+        abCommands=commands
+      , abLBraceDecs=lBraceDecs
+      , abRBraceDecs=rBraceDecs
+    }
     <?> "block of commands"
 
 pCommand :: TokenParser ACommand
@@ -677,37 +1084,51 @@ pCommand =
 
 pIfCommand :: TokenParser ACommand
 pIfCommand = do
-    _ <- pIf
-    testExpr <- between pLParen pRParen pExpr
+    (ifDecs, _) <- pIf
+    (lParenDecs, rParenDecs, testExpr) <- pBetweenDecs pLParen pRParen pExpr
     trueCommand <- pCommand
     falseCommand <- optionMaybe pElseCommand
     return AIfCommand {
         aicTestExpr=testExpr
       , aicTrueCommand=trueCommand
       , aicFalseCommand=falseCommand
+      , aicIfDecs=ifDecs
+      , aicLParenDecs=lParenDecs
+      , aicRParenDecs=rParenDecs
     }
 
 pElseCommand :: TokenParser ACommand
 pElseCommand = do
-    _ <- pElse
-    pCommand
+    (elseDecs, _) <- pElse
+    command <- pCommand
+    return AElseCommand {
+        aecCommand=command
+      , aecElseDecs=elseDecs
+    }
 
 pWhileCommand :: TokenParser ACommand
 pWhileCommand = do
-    _ <- pWhile
-    testExpr <- between pLParen pRParen pExpr
+    (whileDecs, _) <- pWhile
+    (lParenDecs, rParenDecs, testExpr) <- pBetweenDecs pLParen pRParen pExpr
     command <- pCommand
     return AWhileCommand {
         awcTestExpr=testExpr
       , awcCommand=command
+      , awcWhileDecs=whileDecs
+      , awcLParenDecs=lParenDecs
+      , awcRParenDecs=rParenDecs
     }
 
 pReturnCommand :: TokenParser ACommand
 pReturnCommand = do
-    _ <- pReturn
+    (returnDecs, _) <- pReturn
     expr <- optionMaybe pExpr
-    _ <- pSemicolon
-    return $ AReturnCommand expr
+    (semicolonDecs, _) <- pSemicolon
+    return AReturnCommand {
+        arcExpr=expr
+      , arcReturnDecs=returnDecs
+      , arcSemicolonDecs=semicolonDecs
+    }
 
 pVarDecCommand :: TokenParser ACommand
 pVarDecCommand = AVarDecCommand <$> pVarDec
@@ -715,8 +1136,11 @@ pVarDecCommand = AVarDecCommand <$> pVarDec
 pExprCommand :: TokenParser ACommand
 pExprCommand = do
     expr <- pExpr
-    _ <- pSemicolon
-    return $ AExprCommand expr
+    (semicolonDecs, _) <- pSemicolon
+    return AExprCommand {
+        aecExpr=expr
+      , aecSemicolonDecs=semicolonDecs
+    }
 
 pBlockCommand :: TokenParser ACommand
 pBlockCommand = ABlockCommand <$> pBlock
@@ -780,13 +1204,14 @@ pAddBinOp = pBinOp (pPlus <|> pMinus)
 pMultBinOp :: TokenParser (AExpr -> AExpr -> AExpr)
 pMultBinOp = pBinOp (pMult <|> pDiv)
 
-pBinOp :: TokenParser String -> TokenParser (AExpr -> AExpr -> AExpr)
+pBinOp :: TokenDecParser String -> TokenParser (AExpr -> AExpr -> AExpr)
 pBinOp opParser = do
-    opString <- opParser
+    (opDecs, opString) <- opParser
     return (\expr1 expr2 -> ABinOpExpr {
           aboeExpr1=expr1
         , aboeExpr2=expr2
         , aboeOp=opString
+        , aboeOpDecs=opDecs
       })
 
 pMaybeCastExpr :: TokenParser AExpr
@@ -794,11 +1219,13 @@ pMaybeCastExpr = (try pCastExpr) <|> pMaybeUnaryExpr
 
 pCastExpr :: TokenParser AExpr
 pCastExpr = do
-    typeName <- between pLParen pRParen pTypeName
+    (lParenDecs, rParenDecs, typeName) <- pBetweenDecs pLParen pRParen pTypeName
     castExpr <- pMaybeCastExpr
     return ACastExpr {
         aceTypeName=typeName
       , aceCastExpr=castExpr
+      , aceLParenDecs=lParenDecs
+      , aceRParenDecs=rParenDecs
     }
 
 pMaybeUnaryExpr :: TokenParser AExpr
@@ -806,11 +1233,12 @@ pMaybeUnaryExpr = pUnaryExpr <|> pMaybePostfixExpr
 
 pUnaryExpr :: TokenParser AExpr
 pUnaryExpr = do
-    op <- (pInc <|> pDec <|> pPlus <|> pMinus <|> pBinAnd <|> pMult <|> pNot)
+    (opDecs, op) <- (pInc <|> pDec <|> pPlus <|> pMinus <|> pBinAnd <|> pMult <|> pNot)
     expr <- pMaybeUnaryExpr
     return AUnaryOpExpr {
         auoeExpr=expr
       , auoeOp=op
+      , auoeOpDecs=opDecs
     }
 
 pMaybePostfixExpr :: TokenParser AExpr
@@ -828,252 +1256,349 @@ pMaybePostfixExpr' rootExpr = do
 
 pIndexExpr :: AExpr -> TokenParser AExpr
 pIndexExpr rootExpr = do
-    indexExpr <- between pLBracket pRBracket pExpr
+    (lBracketDecs, rBracketDecs, indexExpr) <- pBetweenDecs pLBracket pRBracket pExpr
     pMaybePostfixExpr' AIndexExpr {
         aieExpr=rootExpr
       , aieIndexExpr=indexExpr
+      , aieLBracketDecs=lBracketDecs
+      , aieRBracketDecs=rBracketDecs
     }
 
 pCallExpr :: AExpr -> TokenParser AExpr
 pCallExpr rootExpr = do
-    params <- between pLParen pRParen (sepBy pExpr pComma)
+    (lParenDecs, rParenDecs, (commaDecs, params)) <- pBetweenDecs pLParen pRParen (pSepByDecs pExpr pComma)
     pMaybePostfixExpr' ACallExpr {
         aceFunctionExpr=rootExpr
       , aceParams=params
+      , aceLParenDecs=lParenDecs
+      , aceRParenDecs=rParenDecs
+      , aceCommaDecs=commaDecs
     }
 
 pMemberExpr :: AExpr -> TokenParser AExpr
 pMemberExpr rootExpr = do
-    _ <- pDot
-    member <- pIdentifier
+    (dotDecs, _) <- pDot
+    (memberDecs, member) <- pIdentifier
     pMaybePostfixExpr' AMemberExpr {
         ameExpr=rootExpr
       , ameMember=member
+      , ameDotDecs=dotDecs
+      , ameMemberDecs=memberDecs
     }
 
 pPostOpExpr :: AExpr -> TokenParser AExpr
 pPostOpExpr rootExpr = do
-    op <- (pInc <|> pDec)
+    (opDecs, op) <- (pInc <|> pDec)
     pMaybePostfixExpr' APostOpExpr {
         apoeExpr=rootExpr
       , apoeOp=op
+      , apoeOpDecs=opDecs
     }
 
 pPrimaryExpr :: TokenParser AExpr
 pPrimaryExpr = do
-    (AParenExpr <$> (between pLParen pRParen pExpr))
-    <|> (AFloatExpr <$> pFloat)
-    <|> (AIntExpr <$> pInteger)
-    <|> (AStringExpr <$> pString)
-    <|> (AIdentifierExpr <$> pIdentifier)
-    <|> (pFalse >> return AFalse)
-    <|> (pTrue >> return ATrue)
-    <|> (pThis >> return AThisExpr)
+    pParenExpr
+    <|> pFloatExpr
+    <|> pIntExpr
+    <|> pStringExpr
+    <|> pIdentifierExpr
+    <|> pFalseExpr
+    <|> pTrueExpr
+    <|> pThisExpr
     <|> pNewExpr
+
+pParenExpr :: TokenParser AExpr
+pParenExpr = do
+    (lParenDecs, rParenDecs, expr) <- pBetweenDecs pLParen pRParen pExpr
+    return AParenExpr {
+        apeExpr=expr
+      , apeLParenDecs=lParenDecs
+      , apeRParenDecs=rParenDecs
+    }
+
+pFloatExpr :: TokenParser AExpr
+pFloatExpr = do
+    (floatDecs, f) <- pFloat
+    return AFloatExpr {
+        afeFloat=f
+      , afeFloatDecs=floatDecs
+    }
+
+pIntExpr :: TokenParser AExpr
+pIntExpr = do
+    (intDecs, i) <- pInteger
+    return AIntExpr {
+        aieInt=i
+      , aieIntDecs=intDecs
+    }
+
+pStringExpr :: TokenParser AExpr
+pStringExpr = do
+    (stringDecs, s) <- pString
+    return AStringExpr {
+        aseString=s
+      , aseStringDecs=stringDecs
+    }
+
+pIdentifierExpr :: TokenParser AExpr
+pIdentifierExpr = do
+    (idDecs, ident) <- pIdentifier
+    return AIdentifierExpr {
+        aieId=ident
+      , aieIdDecs=idDecs
+    }
+
+pFalseExpr :: TokenParser AExpr
+pFalseExpr = do
+    (falseDecs, _) <- pFalse
+    return AFalseExpr {
+        afeFalseDecs=falseDecs
+    }
+
+pTrueExpr :: TokenParser AExpr
+pTrueExpr = do
+    (trueDecs, _) <- pTrue
+    return ATrueExpr {
+        ateTrueDecs=trueDecs
+    }
+
+pThisExpr :: TokenParser AExpr
+pThisExpr = do
+    (thisDecs, _) <- pThis
+    return AThisExpr {
+        ateThisDecs=thisDecs
+    }
 
 pNewExpr :: TokenParser AExpr
 pNewExpr = do
-    _ <- pNew
+    (newDecs, _) <- pNew
     typeName <- pTypeName
-    sizeExpr <- between pLBracket pRBracket pExpr
+    (lBracketDecs, rBracketDecs, sizeExpr) <- pBetweenDecs pLBracket pRBracket pExpr
     return ANewExpr {
         aneTypeName=typeName
       , aneSizeExpr=sizeExpr
+      , aneNewDecs=newDecs
+      , aneLBracketDecs=lBracketDecs
+      , aneRBracketDecs=rBracketDecs
     }
 
 pTypeName :: TokenParser ATypeName
 pTypeName = do
-    name <- pIdentifier
-    isPointer <- isJust <$> optionMaybe pMult
-    return ATypeName { atnName=name, atnIsPointer=isPointer }
+    (nameDecs, name) <- pIdentifier
+    maybePointer <- optionMaybe pMult
+    return ATypeName {
+        atnName=name
+      , atnIsPointer=isJust maybePointer
+      , atnNameDecs=nameDecs
+      , atnMultDecs=fst <$> maybePointer
+    }
     <?> "type name"
 
-pInteger :: TokenParser Integer
+pSepByDecs :: TokenParser a -> TokenDecParser sep -> TokenParser ([[Decoration]], [a])
+pSepByDecs p sep = pSepBy1Decs p sep <|> return ([], [])
+
+pSepBy1Decs :: TokenParser a -> TokenDecParser sep -> TokenParser ([[Decoration]], [a])
+pSepBy1Decs p sep = do
+    x <- p
+    pairs <- many (do
+        (sepDecs, _) <- sep
+        x2 <- p
+        return (sepDecs, x2))
+    return (fst <$> pairs, [x] ++ (snd <$> pairs))
+
+pBetweenDecs :: TokenDecParser open -> TokenDecParser close -> TokenParser a -> TokenParser ([Decoration], [Decoration], a)
+pBetweenDecs open close p = do
+    (openDecs, _) <- open
+    x <- p
+    (closeDecs, _) <- close
+    return (openDecs, closeDecs, x)
+
+pInteger :: TokenDecParser Integer
 pInteger =
     matchToken test
     where
-      test (TInteger i) = Just i
-      test _ = Nothing
+      test (TInteger i) decs = Just (decs, i)
+      test _ _ = Nothing
 
-pFloat :: TokenParser Double
+pFloat :: TokenDecParser Double
 pFloat =
     matchToken test
     where
-      test (TFloat i) = Just i
-      test _ = Nothing
+      test (TFloat i) decs = Just (decs, i)
+      test _ _ = Nothing
 
-pString :: TokenParser String
+pString :: TokenDecParser String
 pString =
     matchToken test
     where
-      test (TString i) = Just i
-      test _ = Nothing
+      test (TString i) decs = Just (decs, i)
+      test _ _ = Nothing
 
-pIdentifier :: TokenParser String
+pIdentifier :: TokenDecParser String
 pIdentifier =
     matchToken test
     where
-      test (TIdentifier s) = Just s
-      test _ = Nothing
+      test (TIdentifier s) decs = Just (decs, s)
+      test _ _ = Nothing
 
-pAssign :: TokenParser String
+pAssign :: TokenDecParser String
 pAssign = matchToken' TAssign
 
-pBinAnd :: TokenParser String
+pBinAnd :: TokenDecParser String
 pBinAnd = matchToken' TBinAnd
 
-pBinOr :: TokenParser String
+pBinOr :: TokenDecParser String
 pBinOr = matchToken' TBinOr
 
-pComma :: TokenParser String
+pComma :: TokenDecParser String
 pComma = matchToken' TComma
 
-pDiv :: TokenParser String
+pDiv :: TokenDecParser String
 pDiv = matchToken' TDiv
 
-pDivAssign :: TokenParser String
+pDivAssign :: TokenDecParser String
 pDivAssign = matchToken' TDivAssign
 
-pDec :: TokenParser String
+pDec :: TokenDecParser String
 pDec = matchToken' TDec
 
-pDot :: TokenParser String
+pDot :: TokenDecParser String
 pDot = matchToken' TDot
 
-pElse :: TokenParser String
+pElse :: TokenDecParser String
 pElse = matchToken' TElse
 
-pEnum :: TokenParser String
+pEnum :: TokenDecParser String
 pEnum = matchToken' TEnum
 
-pEq :: TokenParser String
+pEq :: TokenDecParser String
 pEq = matchToken' TEq
 
-pEof :: TokenParser String
+pEof :: TokenDecParser String
 pEof = matchToken' TEof
 
-pExport :: TokenParser String
+pExport :: TokenDecParser String
 pExport = matchToken' TExport
 
-pFalse :: TokenParser String
+pFalse :: TokenDecParser String
 pFalse = matchToken' TFalse
 
-pFunction :: TokenParser String
+pFunction :: TokenDecParser String
 pFunction = matchToken' TFunction
 
-pGt :: TokenParser String
+pGt :: TokenDecParser String
 pGt = matchToken' TGt
 
-pGtEq :: TokenParser String
+pGtEq :: TokenDecParser String
 pGtEq = matchToken' TGtEq
 
-pIf :: TokenParser String
+pIf :: TokenDecParser String
 pIf = matchToken' TIf
 
-pInc :: TokenParser String
+pInc :: TokenDecParser String
 pInc = matchToken' TInc
 
-pImport :: TokenParser String
+pImport :: TokenDecParser String
 pImport = matchToken' TImport
 
-pLBrace :: TokenParser String
+pLBrace :: TokenDecParser String
 pLBrace = matchToken' TLBrace
 
-pLBracket :: TokenParser String
+pLBracket :: TokenDecParser String
 pLBracket = matchToken' TLBracket
 
-pLogAnd :: TokenParser String
+pLogAnd :: TokenDecParser String
 pLogAnd = matchToken' TLogAnd
 
-pLogOr :: TokenParser String
+pLogOr :: TokenDecParser String
 pLogOr = matchToken' TLogOr
 
-pLParen :: TokenParser String
+pLParen :: TokenDecParser String
 pLParen = matchToken' TLParen
 
-pLt :: TokenParser String
+pLt :: TokenDecParser String
 pLt = matchToken' TLt
 
-pLtEq :: TokenParser String
+pLtEq :: TokenDecParser String
 pLtEq = matchToken' TLtEq
 
-pMember :: TokenParser String
+pMember :: TokenDecParser String
 pMember = matchToken' TMember
 
-pMinus :: TokenParser String
+pMinus :: TokenDecParser String
 pMinus = matchToken' TMinus
 
-pMinusAssign :: TokenParser String
+pMinusAssign :: TokenDecParser String
 pMinusAssign = matchToken' TMinusAssign
 
-pMult :: TokenParser String
+pMult :: TokenDecParser String
 pMult = matchToken' TMult
 
-pMultAssign :: TokenParser String
+pMultAssign :: TokenDecParser String
 pMultAssign = matchToken' TMultAssign
 
-pNeq :: TokenParser String
+pNeq :: TokenDecParser String
 pNeq = matchToken' TNeq
 
-pNew :: TokenParser String
+pNew :: TokenDecParser String
 pNew = matchToken' TNew
 
-pNot :: TokenParser String
+pNot :: TokenDecParser String
 pNot = matchToken' TNot
 
-pPlus :: TokenParser String
+pPlus :: TokenDecParser String
 pPlus = matchToken' TPlus
 
-pPlusAssign :: TokenParser String
+pPlusAssign :: TokenDecParser String
 pPlusAssign = matchToken' TPlusAssign
 
-pRBrace :: TokenParser String
+pRBrace :: TokenDecParser String
 pRBrace = matchToken' TRBrace
 
-pRBracket :: TokenParser String
+pRBracket :: TokenDecParser String
 pRBracket = matchToken' TRBracket
 
-pReturn :: TokenParser String
+pReturn :: TokenDecParser String
 pReturn = matchToken' TReturn
 
-pRParen :: TokenParser String
+pRParen :: TokenDecParser String
 pRParen = matchToken' TRParen
 
-pSemicolon :: TokenParser String
+pSemicolon :: TokenDecParser String
 pSemicolon = matchToken' TSemicolon
 
-pStatic :: TokenParser String
+pStatic :: TokenDecParser String
 pStatic = matchToken' TStatic
 
-pStruct :: TokenParser String
+pStruct :: TokenDecParser String
 pStruct = matchToken' TStruct
 
-pThis :: TokenParser String
+pThis :: TokenDecParser String
 pThis = matchToken' TThis
 
-pTrue :: TokenParser String
+pTrue :: TokenDecParser String
 pTrue = matchToken' TTrue
 
-pWhile :: TokenParser String
+pWhile :: TokenDecParser String
 pWhile = matchToken' TWhile
 
-matchToken' :: Tok -> TokenParser String
-matchToken' tok = matchToken (\t -> if t == tok then Just (show t) else Nothing)
+matchToken' :: Tok -> TokenDecParser String
+matchToken' tok = matchToken (\t decs -> if t == tok then Just (decs, show t) else Nothing)
 
-matchToken :: (Tok -> Maybe a) -> TokenParser a
+matchToken :: (Tok -> [Decoration] -> Maybe ([Decoration], a)) -> TokenDecParser a
 matchToken test
     = token showToken posToken testToken
     where
       showToken (_, _, tok) = show tok
       posToken  (pos, _, _) = pos
-      testToken (_, _, tok) = test tok
+      testToken (_, decs, tok) = test tok decs
 
-dumpToks :: Either ParseError [Token] -> IO ()
-dumpToks (Left err) = putStrLn $ "Scanning error: " ++ show err
-dumpToks (Right toks) = mapM_ dumpTok toks
-
-dumpTok :: Token -> IO ()
-dumpTok (pos, _decs, tok) = putStrLn $ show (sourceLine pos) ++ " " ++ show tok
+-- dumpToks :: Either ParseError [Token] -> IO ()
+-- dumpToks (Left err) = putStrLn $ "Scanning error: " ++ show err
+-- dumpToks (Right toks) = mapM_ dumpTok toks
+--
+-- dumpTok :: Token -> IO ()
+-- dumpTok (pos, _decs, tok) = putStrLn $ show (sourceLine pos) ++ " " ++ show tok
 
 cartScan :: String -> Either ParseError [Token]
 cartScan s = do
@@ -1291,7 +1816,7 @@ ptLineComment decorator = do
     pos <- getPosition
     _ <- lookAhead ptLineCommentStart
     s <- many (noneOf "\n\r")
-    return $ (pos, PTDecoration (decorator s))
+    return (pos, PTDecoration (decorator s))
 
 ptBlockComment :: Parser PreToken
 ptBlockComment = do
@@ -1307,7 +1832,7 @@ ptNonComment :: Parser PreToken
 ptNonComment = do
     pos <- getPosition
     s <- many1Till anyChar toNonCommentEnd
-    return $ (pos, PTContent s)
+    return (pos, PTContent s)
 
 toNonCommentEnd :: Parser String
 toNonCommentEnd =
