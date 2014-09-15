@@ -1828,8 +1828,8 @@ ptLine = do
     _ <- ptSpacePrefix
     (try ((:[]) <$> ptDirective)
        <|> try ((:[]) <$> (ptLineComment DLineComment))
-       <|> try ptLineContent
-       <|> return [(pos, PTDecoration DBlankLine)])
+       <|> (lookAhead eol >> return [(pos, PTDecoration DBlankLine)])
+       <|> ptLineContent)
 
 ptSpacePrefix :: Parser String
 ptSpacePrefix = many (oneOf " \t\v")
@@ -1867,7 +1867,8 @@ ptBlockComment = do
 ptNonComment :: Parser PreToken
 ptNonComment = do
     pos <- getPosition
-    s <- many1Till anyChar toNonCommentEnd
+    s <- manyTill anyChar toNonCommentEnd
+    guard (not $ null s)
     return (pos, PTContent s)
 
 toNonCommentEnd :: Parser String
@@ -1878,12 +1879,6 @@ toNonCommentEnd =
          <|> try (string "/" >> (string "*" <|> string "/"))
          <|> (eof >> return "")
     )
-
-many1Till :: (Show end) => Parser a -> Parser end -> Parser [a]
-many1Till p end = do
-    s <- manyTill p end
-    guard (not $ null s)
-    return s
 
 ptLineCommentStart :: Parser String
 ptLineCommentStart = string "//"
