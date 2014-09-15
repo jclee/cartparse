@@ -3,6 +3,7 @@ import Control.Monad
 import Control.Monad.State
 import Data.Functor.Identity
 import Data.List
+import Data.List.Split (splitOn)
 import Data.Maybe
 import System.Directory
 import System.Environment
@@ -49,7 +50,7 @@ data Decoration = DLineComment String
     | DBlockComment String
     | DEndComment String
     | DInlineComment String
-    deriving (Show)
+    deriving (Show, Eq)
 
 type PreToken = (SourcePos, PreTok)
 data PreTok = PTDecoration Decoration
@@ -426,7 +427,7 @@ data Doc =
     Text ([Decoration], String)
     | Line
     | Space
-    deriving (Show)
+    deriving (Show, Eq)
 
 class Renderable a where
     render :: a -> [Doc]
@@ -824,34 +825,42 @@ renderBetween start end items = [Text start, Line] ++ intercalate [Line] (fmap r
 
 renderToString :: [Doc] -> String
 renderToString docs =
-    concat $ fst $ runState ((mapM renderToString') docs) (0, True)
+  intercalate "\n" renderedLines
+  where
+    renderedLines = fst $ runState ((mapM renderLine) docLines) 0
+    docLines = splitOn [Line] docs
 
-renderToString' :: Doc -> State (Int, Bool) String
-renderToString' (Text (decs, s)) = do
-    (indent, shouldIndent) <- get
-    let indent' =
-            -- NOTE: Not strictly correct, if
-            -- comments are also Text.
-            if s `elem` ["(", "[", "{"] then
-                indent + 1
-            else if s `elem` [")", "]", "}"] then
-                indent - 1
-            else indent
-    put (indent', shouldIndent)
-    doIndent s
-renderToString' Line = do
-    (indent, _shouldIndent) <- get
-    put (indent, True)
-    return "\n"
-renderToString' Space = return " "
+renderLine :: [Doc] -> State Int String
+renderLine docs = do
+  indent <- get
+  let
+      indentDeltas = getIndentDelta <$> docs
+      minIndent = indent + (minimum $ cumSum indentDeltas)
+  put $ indent + sum indentDeltas
+  return $ renderIndent minIndent ++ (concat $ docToString <$> docs)
 
-doIndent :: String -> State (Int, Bool) String
-doIndent s = do
-    (indent, shouldIndent) <- get
-    put (indent, False)
-    return $ if shouldIndent then
-                 replicate (indent * 4) ' ' ++ s
-             else s
+cumSum :: [Int] -> [Int]
+cumSum = scanl1 (+)
+
+getIndentDelta :: Doc -> Int
+getIndentDelta (Text (_, s)) =
+  case s of
+    "(" -> 1
+    "[" -> 1
+    "{" -> 1
+    ")" -> -1
+    "]" -> -1
+    "}" -> -1
+    _ -> 0
+getIndentDelta _ = 0
+
+docToString :: Doc -> String
+docToString (Text (_, s)) = s
+docToString Space = " "
+docToString doc = error $ "Unhandled doc type " ++ show doc
+
+renderIndent :: Int -> String
+renderIndent i = replicate (i * 4) ' '
 
 cartParse :: TokenParser Ast
 cartParse = do
