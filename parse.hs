@@ -31,8 +31,9 @@ parseFile file = do
     content <- fileContent file
     let toks = cartScan content
     let ast = parse cartParse "(parser input)" =<< toks
+    let ast2 = rewriteWith blockify <$> ast
     --dumpToks $ take 200 <$> toks
-    putStrLn $ either show (renderToString . render) ast
+    putStrLn $ either show (renderToString . render) ast2
 
 getFiles :: FilePath -> IO [FilePath]
 getFiles p = filterM doesFileExist =<< getRelDirectoryContents p
@@ -422,6 +423,232 @@ data ATypeName =
 type TokenParser a = GenParser Token () a
 type TokenDecParser a = TokenParser ([Decoration], a)
 type PreTokenParser a = GenParser PreToken () a
+
+data Rewriter = Rewriter {
+    rewriteAst :: Rewriter -> Ast -> Ast
+  , rewriteTopLevel :: Rewriter -> ATopLevel -> ATopLevel
+  , rewriteStructMember :: Rewriter -> AStructMember -> AStructMember
+  , rewriteImportDec :: Rewriter -> AImportDec -> AImportDec
+  , rewriteFunctionSignature :: Rewriter -> AFunctionSignature -> AFunctionSignature
+  , rewriteFunctionDecParam :: Rewriter -> AFunctionDecParam -> AFunctionDecParam
+  , rewriteBlock :: Rewriter -> ABlock -> ABlock
+  , rewriteCommand :: Rewriter -> ACommand -> ACommand
+  , rewriteVarDec :: Rewriter -> AVarDec -> AVarDec
+  , rewriteVarInit :: Rewriter -> AVarInit -> AVarInit
+  , rewriteVarSubscript :: Rewriter -> AVarSubscript -> AVarSubscript
+  , rewriteExpr :: Rewriter -> AExpr -> AExpr
+  , rewriteTypeName :: Rewriter -> ATypeName -> ATypeName
+  }
+
+visitingRewriter :: Rewriter
+visitingRewriter = Rewriter {
+    rewriteAst =
+      \r (Ast ts) -> Ast $ rewriteTopLevel r r <$> ts
+  , rewriteTopLevel = \r a -> case a of
+      AFunctionDec {
+        afdSignature=signature
+      , afdBlock=block
+      } -> a {
+        afdSignature=rewriteFunctionSignature r r signature
+      , afdBlock=rewriteBlock r r block
+      }
+      ATopLevelVarDec b -> ATopLevelVarDec $ rewriteVarDec r r b
+      ATopLevelImportDec b -> ATopLevelImportDec $ rewriteImportDec r r b
+      AStructDec {
+        asdMembers=members
+      } -> a {
+        asdMembers=rewriteStructMember r r <$> members
+      }
+      _ -> a
+  , rewriteStructMember = \r a -> case a of
+      AStructMemberImport b -> AStructMemberImport $ rewriteImportDec r r b
+      AStructMemberVar b -> AStructMemberVar $ rewriteVarDec r r b
+  , rewriteImportDec = \r a -> case a of
+      AImportFunctionSig {
+        aifsFunctionSig=functionSig
+      } -> a {
+        aifsFunctionSig=rewriteFunctionSignature r r functionSig
+      }
+      AImportVarDec {
+        aivdVarDec=varDec
+      } -> a {
+        aivdVarDec=rewriteVarDec r r varDec
+      }
+  , rewriteFunctionSignature = \r a -> case a of
+      AFunctionSignature {
+        afsParams=params
+      } -> a {
+        afsParams=rewriteFunctionDecParam r r <$> params
+      }
+  , rewriteFunctionDecParam = \r a -> case a of
+      AFunctionDecRegularParam {
+        afdrpTypeName=typeName
+      , afdrpVarInit=varInit
+      } -> a {
+        afdrpTypeName=rewriteTypeName r r typeName
+      , afdrpVarInit=rewriteVarInit r r varInit
+      }
+      _ -> a
+  , rewriteBlock = \r a -> case a of
+      ABlock {
+        abCommands=commands
+      } -> a {
+        abCommands=rewriteCommand r r <$> commands
+      }
+  , rewriteCommand = \r a -> case a of
+      AIfCommand {
+        aicTestExpr=testExpr
+      , aicTrueCommand=trueCommand
+      , aicFalseCommand=falseCommand
+      } -> a {
+        aicTestExpr=rewriteExpr r r testExpr
+      , aicTrueCommand=rewriteCommand r r trueCommand
+      , aicFalseCommand=rewriteCommand r r <$> falseCommand
+      }
+      AElseCommand {
+        aecCommand=command
+      } -> a {
+        aecCommand=rewriteCommand r r command
+      }
+      AWhileCommand {
+        awcTestExpr=testExpr
+      , awcCommand=command
+      } -> a {
+        awcTestExpr=rewriteExpr r r testExpr
+      , awcCommand=rewriteCommand r r command
+      }
+      AReturnCommand {
+        arcExpr=expr
+      } -> a {
+        arcExpr=rewriteExpr r r <$> expr
+      }
+      AVarDecCommand b -> AVarDecCommand $ rewriteVarDec r r b
+      AExprCommand {
+        aecExpr=expr
+      } -> a {
+        aecExpr=rewriteExpr r r expr
+      }
+      ABlockCommand b -> ABlockCommand $ rewriteBlock r r b
+  , rewriteVarDec = \r a -> case a of
+    AVarDec {
+        avdTypeName=typeName
+      , avdVars=vars
+      } -> a {
+        avdTypeName=rewriteTypeName r r typeName
+      , avdVars=rewriteVarInit r r <$> vars
+      }
+  , rewriteVarInit = \r a -> case a of
+      AVarInit {
+        aviSubscripts=subscripts
+      , aviInit=varInit
+      } -> a {
+        aviSubscripts=rewriteVarSubscript r r <$> subscripts
+      , aviInit=rewriteExpr r r <$> varInit
+      }
+  , rewriteVarSubscript = \_r -> id
+  , rewriteExpr = \r a -> case a of
+      ANewExpr {
+        aneTypeName=typeName
+      , aneSizeExpr=sizeExpr
+      } -> a {
+        aneTypeName=rewriteTypeName r r typeName
+      , aneSizeExpr=rewriteExpr r r sizeExpr
+      }
+      AIndexExpr {
+        aieExpr=expr
+      , aieIndexExpr=indexExpr
+      } -> a {
+        aieExpr=rewriteExpr r r expr
+      , aieIndexExpr=rewriteExpr r r indexExpr
+      }
+      ACallExpr {
+        aceFunctionExpr=functionExpr
+      , aceParams=params
+      } -> a {
+        aceFunctionExpr=rewriteExpr r r functionExpr
+      , aceParams=rewriteExpr r r <$> params
+      }
+      AMemberExpr {
+        ameExpr=expr
+      } -> a {
+        ameExpr=rewriteExpr r r expr
+      }
+      AUnaryOpExpr {
+        auoeExpr=expr
+      } -> a {
+        auoeExpr=rewriteExpr r r expr
+      }
+      APostOpExpr {
+        apoeExpr=expr
+      } -> a {
+        apoeExpr=rewriteExpr r r expr
+      }
+      ABinOpExpr {
+        aboeExpr1=expr1
+      , aboeExpr2=expr2
+      } -> a {
+        aboeExpr1=rewriteExpr r r expr1
+      , aboeExpr2=rewriteExpr r r expr2
+      }
+      AParenExpr {
+        apeExpr=expr
+      } -> a {
+        apeExpr=rewriteExpr r r expr
+      }
+      ACastExpr {
+        aceTypeName=typeName
+      , aceCastExpr=castExpr
+      } -> a {
+        aceTypeName=rewriteTypeName r r typeName
+      , aceCastExpr=rewriteExpr r r castExpr
+      }
+      _ -> a
+  , rewriteTypeName = \_r -> id
+  }
+
+blockify :: Rewriter
+blockify = visitingRewriter {
+  rewriteCommand = \r a ->
+    let
+      ensureBlocked :: ACommand -> ACommand
+      ensureBlocked c@(ABlockCommand _) = c
+      ensureBlocked c = ABlockCommand $ ABlock {
+          abCommands=[c]
+        , abLBraceDecs=[]
+        , abRBraceDecs=[]
+        }
+    in case a of
+      AIfCommand {
+        aicTestExpr=testExpr
+      , aicTrueCommand=trueCommand
+      , aicFalseCommand=falseCommand
+      } -> a {
+        aicTestExpr=rewriteExpr r r testExpr
+      , aicTrueCommand=ensureBlocked $ rewriteCommand r r trueCommand
+      , aicFalseCommand=rewriteCommand r r <$> falseCommand
+      }
+      AElseCommand {
+        aecCommand=command@(AIfCommand {})
+      } -> a {
+        aecCommand=rewriteCommand r r command
+      }
+      AElseCommand {
+        aecCommand=command
+      } -> a {
+        aecCommand=ensureBlocked $ rewriteCommand r r command
+      }
+      AWhileCommand {
+        awcTestExpr=testExpr
+      , awcCommand=command
+      } -> a {
+        awcTestExpr=rewriteExpr r r testExpr
+      , awcCommand=ensureBlocked $ rewriteCommand r r command
+      }
+      _ -> rewriteCommand visitingRewriter r a
+}
+
+rewriteWith :: Rewriter -> Ast -> Ast
+rewriteWith r = (rewriteAst r) r
 
 -- Data.ByteString might be more performant?
 data Doc =
@@ -832,6 +1059,7 @@ renderToString docs =
     docLines = splitOn [Line] docs
 
 renderLine :: [Doc] -> State Int [String]
+renderLine [] = return []
 renderLine docs = do
   indent <- get
   let
