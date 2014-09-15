@@ -5,6 +5,7 @@ import Data.Functor.Identity
 import Data.List
 import Data.List.Split (splitOn)
 import Data.Maybe
+import qualified Data.Text as T
 import System.Directory
 import System.Environment
 import System.FilePath
@@ -827,17 +828,21 @@ renderToString :: [Doc] -> String
 renderToString docs =
   intercalate "\n" renderedLines
   where
-    renderedLines = fst $ runState ((mapM renderLine) docLines) 0
+    renderedLines = concat $ fst $ runState ((mapM renderLine) docLines) 0
     docLines = splitOn [Line] docs
 
-renderLine :: [Doc] -> State Int String
+renderLine :: [Doc] -> State Int [String]
 renderLine docs = do
   indent <- get
   let
       indentDeltas = getIndentDelta <$> docs
       minIndent = indent + (minimum $ cumSum indentDeltas)
+      docLine = concat $ docToString <$> docs
+      decs = concat $ getDecs <$> docs
+      decLines = concat $ decToLines <$> decs
+      indentString = renderIndent minIndent
   put $ indent + sum indentDeltas
-  return $ renderIndent minIndent ++ (concat $ docToString <$> docs)
+  return $ (indentString ++) <$> decLines ++ [docLine]
 
 cumSum :: [Int] -> [Int]
 cumSum = scanl1 (+)
@@ -853,6 +858,18 @@ getIndentDelta (Text (_, s)) =
     "}" -> -1
     _ -> 0
 getIndentDelta _ = 0
+
+getDecs :: Doc -> [Decoration]
+getDecs (Text (decs, _)) = decs
+getDecs _ = []
+
+decToLines :: Decoration -> [String]
+decToLines (DLineComment s) = ["// " ++ strip s]
+decToLines (DDirective s) = [strip s]
+decToLines DBlankLine = [""]
+decToLines (DBlockComment s) = ("// " ++) . strip <$> lines s
+decToLines (DEndComment s) = ["// " ++ strip s]
+decToLines (DInlineComment s) = ["// " ++ strip s]
 
 docToString :: Doc -> String
 docToString (Text (_, s)) = s
@@ -1832,7 +1849,7 @@ ptLineContent = many (try (ptLineComment DEndComment)
 ptLineComment :: (String -> Decoration) -> Parser PreToken
 ptLineComment decorator = do
     pos <- getPosition
-    _ <- lookAhead ptLineCommentStart
+    _ <- ptLineCommentStart
     s <- many (noneOf "\n\r")
     return (pos, PTDecoration (decorator s))
 
@@ -1840,7 +1857,8 @@ ptBlockComment :: Parser PreToken
 ptBlockComment = do
     pos <- getPosition
     _ <- ptBlockCommentStart
-    s <- manyTill anyChar (try ptBlockCommentEnd)
+    s <- manyTill anyChar (lookAhead ptBlockCommentEnd)
+    _ <- ptBlockCommentEnd
     return (pos, PTDecoration $ ctor s)
         where ctor s = if elem '\n' s || elem '\r' s
                        then DBlockComment s
@@ -1880,3 +1898,6 @@ eol :: Parser String
 eol = (string "\r" >> ((string "\n" >> return "\r\n") <|> return "\r"))
       <|> string "\n"
       <?> "end of line"
+
+strip :: String -> String
+strip = T.unpack . T.strip . T.pack
