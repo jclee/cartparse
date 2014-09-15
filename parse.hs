@@ -1877,7 +1877,6 @@ ptBlockCommentEnd :: Parser String
 ptBlockCommentEnd = string "*/"
 
 eol :: Parser String
-eol = try (string "\r\n")
-      <|> string "\r"
+eol = (string "\r" >> ((string "\n" >> return "\r\n") <|> return "\r"))
       <|> string "\n"
       <?> "end of line"
