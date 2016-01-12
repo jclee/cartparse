@@ -1,29 +1,59 @@
-import Control.Monad
 import Control.Monad.State
-import Data.Functor.Identity
-import Data.List
+    ( State
+    , filterM
+    , get
+    , guard
+    , put
+    , runState
+    )
+import Data.Functor.Identity (Identity)
+import Data.List as L
 import Data.List.Split (splitOn)
-import Data.Maybe
+import Data.Maybe (isJust)
 import Data.Monoid ((<>))
 import qualified Data.Text as T
-import System.Directory
-import System.Environment
-import System.FilePath
-import System.IO
-import Text.ParserCombinators.Parsec hiding (State)
+import System.Directory (doesFileExist, getDirectoryContents)
+import System.Environment (getEnv)
+import System.FilePath ((</>))
+import System.IO (IOMode (ReadMode), openFile, hGetContents)
+import Text.ParserCombinators.Parsec
+    ( GenParser
+    , Parser
+    , ParseError
+    , SourcePos
+    , (<|>)
+    , (<?>)
+    , anyChar
+    , chainl1
+    , char
+    , eof
+    , getPosition
+    , lookAhead
+    , many
+    , manyTill
+    , noneOf
+    , oneOf
+    , optionMaybe
+    , parse
+    , sepEndBy
+    , setPosition
+    , string
+    , token
+    , try
+    )
 import qualified Text.ParserCombinators.Parsec.Token as P
 import Text.ParserCombinators.Parsec.Language (javaStyle)
 
 main :: IO ()
 main = do
     cartDir <- getEnv "CARTLIFE"
-    files <- sort <$> filter isSourceFile <$> (getFiles cartDir)
+    files <- L.sort <$> filter isSourceFile <$> (getFiles cartDir)
     mapM_ parseFile files
     --let file = cartDir </> "AskOnly.asc"
     --parseFile file
 
 isSourceFile :: String -> Bool
-isSourceFile s = isSuffixOf ".asc" s || isSuffixOf ".ash" s
+isSourceFile s = L.isSuffixOf ".asc" s || L.isSuffixOf ".ash" s
 
 parseFile :: String -> IO ()
 parseFile filePath = do
@@ -745,7 +775,7 @@ instance Renderable ABlock where
       , abLBraceDecs=lBraceDecs
       , abRBraceDecs=rBraceDecs
     } = [Text (lBraceDecs, "{"), Line]
-        ++ intercalate [Line] (render <$> commands)
+        ++ L.intercalate [Line] (render <$> commands)
         ++ [Line, Text (rBraceDecs, "}")]
 
 instance Renderable ACommand where
@@ -1051,11 +1081,11 @@ renderInterleaved vals seps =
 
 renderBetween :: (Renderable a) => ([Decoration], String) -> ([Decoration], String) -> [a] -> [Doc]
 renderBetween start end [] = [Text start, Text end]
-renderBetween start end items = [Text start, Line] ++ intercalate [Line] (fmap render items) ++ [Line, Text end]
+renderBetween start end items = [Text start, Line] ++ L.intercalate [Line] (fmap render items) ++ [Line, Text end]
 
 renderToString :: [Doc] -> String
 renderToString docs =
-  intercalate "\n" renderedLines
+  L.intercalate "\n" renderedLines
   where
     renderedLines = concat $ fst $ runState ((mapM renderLine) docLines) 0
     docLines = splitOn [Line] docs
