@@ -78,26 +78,26 @@ fileContent p = do
     inFile <- openFile p ReadMode
     hGetContents inFile
 
-data Decoration = DLineComment String
-    | DDirective String
+data Decoration = DLineComment !String
+    | DDirective !String
     | DBlankLine
-    | DBlockComment String
-    | DEndComment String
-    | DInlineComment String
+    | DBlockComment !String
+    | DEndComment !String
+    | DInlineComment !String
     deriving (Show, Eq)
 
 type PreToken = (SourcePos, PreTok)
-data PreTok = PTDecoration Decoration
-    | PTContent String
+data PreTok = PTDecoration !Decoration
+    | PTContent !String
     deriving (Show)
 
 type DecoratedString = (SourcePos, [Decoration], [Decoration], String)
 
 type Token = (SourcePos, [Decoration], Tok)
 data Tok =
-      TString String
-    | TInteger Integer
-    | TFloat Double
+      TString !String
+    | TInteger !Integer
+    | TFloat !Double
     | TTrue
     | TFalse
     | TMember
@@ -132,7 +132,7 @@ data Tok =
     | TRParen
     | TLBracket
     | TRBracket
-    | TIdentifier String
+    | TIdentifier !String
     | TElse
     | TEnum
     | TExport
@@ -201,254 +201,254 @@ instance Show Tok where
     show TWhile = "while"
     show TEof = "EOF"
 
-data Ast = Ast [ATopLevel]
+data Ast = Ast ![ATopLevel]
     deriving (Show)
 
 data ATopLevel =
-    AEof [Decoration]
+    AEof ![Decoration]
     | AFunctionDec {
-        afdSignature :: AFunctionSignature
-      , afdBlock :: ABlock
+        afdSignature :: !AFunctionSignature
+      , afdBlock :: !ABlock
     }
-    | ATopLevelVarDec AVarDec
-    | ATopLevelImportDec AImportDec
+    | ATopLevelVarDec !AVarDec
+    | ATopLevelImportDec !AImportDec
     | AEnumDec {
-        aedName :: String
-      , aedValues :: [String]
-      , aedEnumDecs :: [Decoration]
-      , aedNameDecs :: [Decoration]
-      , aedLBraceDecs :: [Decoration]
-      , aedValueDecs :: [[Decoration]]
-      , aedCommaDecs :: [[Decoration]]
-      , aedRBraceDecs :: [Decoration]
-      , aedSemicolonDecs :: [Decoration]
+        aedName :: !String
+      , aedValues :: ![String]
+      , aedEnumDecs :: ![Decoration]
+      , aedNameDecs :: ![Decoration]
+      , aedLBraceDecs :: ![Decoration]
+      , aedValueDecs :: ![[Decoration]]
+      , aedCommaDecs :: ![[Decoration]]
+      , aedRBraceDecs :: ![Decoration]
+      , aedSemicolonDecs :: ![Decoration]
     }
     | AStructDec {
-        asdName :: String
-      , asdMembers :: [AStructMember]
-      , asdStructDecs :: [Decoration]
-      , asdNameDecs :: [Decoration]
-      , asdLBraceDecs :: [Decoration]
-      , asdRBraceDecs :: [Decoration]
-      , asdSemicolonDecs :: [Decoration]
+        asdName :: !String
+      , asdMembers :: ![AStructMember]
+      , asdStructDecs :: ![Decoration]
+      , asdNameDecs :: ![Decoration]
+      , asdLBraceDecs :: ![Decoration]
+      , asdRBraceDecs :: ![Decoration]
+      , asdSemicolonDecs :: ![Decoration]
     }
     | AExportDec {
-        axdName :: String
-      , axdExportDecs :: [Decoration]
-      , axdNameDecs :: [Decoration]
-      , axdSemicolonDecs :: [Decoration]
+        axdName :: !String
+      , axdExportDecs :: ![Decoration]
+      , axdNameDecs :: ![Decoration]
+      , axdSemicolonDecs :: ![Decoration]
     }
     deriving (Show)
 
 data AStructMember =
-    AStructMemberImport AImportDec
-    | AStructMemberVar AVarDec
+    AStructMemberImport !AImportDec
+    | AStructMemberVar !AVarDec
     deriving (Show)
 
 data AImportDec =
     AImportFunctionSig {
-        aifsFunctionSig :: AFunctionSignature
-      , aifsImportDecs :: [Decoration]
-      , aifsSemicolonDecs :: [Decoration]
+        aifsFunctionSig :: !AFunctionSignature
+      , aifsImportDecs :: ![Decoration]
+      , aifsSemicolonDecs :: ![Decoration]
     }
     | AImportVarDec {
-        aivdVarDec :: AVarDec
-      , aivdImportDecs :: [Decoration]
+        aivdVarDec :: !AVarDec
+      , aivdImportDecs :: ![Decoration]
     }
     deriving (Show)
 
 data AFunctionSignature =
     AFunctionSignature {
-        afsIsStatic :: Bool
-      , afsReturnType :: String
-      , afsName :: String
-      , afsMember :: Maybe String
-      , afsParams :: [AFunctionDecParam]
-      , afsStaticDecs :: [Decoration]
-      , afsReturnTypeDecs :: [Decoration]
-      , afsNameDecs :: [Decoration]
-      , afsMemberDecs :: [Decoration]
-      , afsMemberNameDecs :: [Decoration]
-      , afsLParenDecs :: [Decoration]
-      , afsCommaDecs :: [[Decoration]]
-      , afsRParenDecs :: [Decoration]
+        afsIsStatic :: !Bool
+      , afsReturnType :: !String
+      , afsName :: !String
+      , afsMember :: !(Maybe String)
+      , afsParams :: ![AFunctionDecParam]
+      , afsStaticDecs :: ![Decoration]
+      , afsReturnTypeDecs :: ![Decoration]
+      , afsNameDecs :: ![Decoration]
+      , afsMemberDecs :: ![Decoration]
+      , afsMemberNameDecs :: ![Decoration]
+      , afsLParenDecs :: ![Decoration]
+      , afsCommaDecs :: ![[Decoration]]
+      , afsRParenDecs :: ![Decoration]
     }
     deriving (Show)
 
 data AFunctionDecParam =
     AFunctionDecExtenderParam {
-        afdepName :: String
-      , afdepThisDecs :: [Decoration]
-      , afdepNameDecs :: [Decoration]
-      , afdepMultDecs :: [Decoration]
+        afdepName :: !String
+      , afdepThisDecs :: ![Decoration]
+      , afdepNameDecs :: ![Decoration]
+      , afdepMultDecs :: ![Decoration]
     }
     | AFunctionDecRegularParam {
-        afdrpTypeName :: ATypeName
-      , afdrpVarInit :: AVarInit
+        afdrpTypeName :: !ATypeName
+      , afdrpVarInit :: !AVarInit
     }
     deriving (Show)
 
 data ABlock =
     ABlock {
-        abCommands :: [ACommand]
-      , abLBraceDecs :: [Decoration]
-      , abRBraceDecs :: [Decoration]
+        abCommands :: ![ACommand]
+      , abLBraceDecs :: ![Decoration]
+      , abRBraceDecs :: ![Decoration]
     }
     deriving (Show)
 
 data ACommand =
     AIfCommand {
-        aicTestExpr :: AExpr
-      , aicTrueCommand :: ACommand
-      , aicFalseCommand :: Maybe ACommand
-      , aicIfDecs :: [Decoration]
-      , aicLParenDecs :: [Decoration]
-      , aicRParenDecs :: [Decoration]
+        aicTestExpr :: !AExpr
+      , aicTrueCommand :: !ACommand
+      , aicFalseCommand :: !(Maybe ACommand)
+      , aicIfDecs :: ![Decoration]
+      , aicLParenDecs :: ![Decoration]
+      , aicRParenDecs :: ![Decoration]
     }
     | AElseCommand {
-          aecCommand :: ACommand
-        , aecElseDecs :: [Decoration]
+          aecCommand :: !ACommand
+        , aecElseDecs :: ![Decoration]
       }
     | AWhileCommand {
-          awcTestExpr :: AExpr
-        , awcCommand :: ACommand
-        , awcWhileDecs :: [Decoration]
-        , awcLParenDecs :: [Decoration]
-        , awcRParenDecs :: [Decoration]
+          awcTestExpr :: !AExpr
+        , awcCommand :: !ACommand
+        , awcWhileDecs :: ![Decoration]
+        , awcLParenDecs :: ![Decoration]
+        , awcRParenDecs :: ![Decoration]
       }
     | AReturnCommand {
-          arcExpr :: Maybe AExpr
-        , arcReturnDecs :: [Decoration]
-        , arcSemicolonDecs :: [Decoration]
+          arcExpr :: !(Maybe AExpr)
+        , arcReturnDecs :: ![Decoration]
+        , arcSemicolonDecs :: ![Decoration]
       }
-    | AVarDecCommand AVarDec
+    | AVarDecCommand !AVarDec
     | AExprCommand {
-          aecExpr :: AExpr
-        , aecSemicolonDecs :: [Decoration]
+          aecExpr :: !AExpr
+        , aecSemicolonDecs :: ![Decoration]
       }
-    | ABlockCommand ABlock
+    | ABlockCommand !ABlock
     deriving (Show)
 
 data AVarDec =
     AVarDec {
-        avdTypeName :: ATypeName
-      , avdVars :: [AVarInit]
-      , avdCommaDecs :: [[Decoration]]
-      , avdSemicolonDecs :: [Decoration]
+        avdTypeName :: !ATypeName
+      , avdVars :: ![AVarInit]
+      , avdCommaDecs :: ![[Decoration]]
+      , avdSemicolonDecs :: ![Decoration]
     }
     deriving (Show)
 
 data AVarInit =
     AVarInit {
-        aviId :: String
-      , aviSubscripts :: [AVarSubscript]
-      , aviInit :: Maybe AExpr
-      , aviIdDecs :: [Decoration]
-      , aviLBracketDecs :: [[Decoration]]
-      , aviRBracketDecs :: [[Decoration]]
-      , aviAssignDecs :: [Decoration]
+        aviId :: !String
+      , aviSubscripts :: ![AVarSubscript]
+      , aviInit :: !(Maybe AExpr)
+      , aviIdDecs :: ![Decoration]
+      , aviLBracketDecs :: ![[Decoration]]
+      , aviRBracketDecs :: ![[Decoration]]
+      , aviAssignDecs :: ![Decoration]
     }
     deriving (Show)
 
 data AVarSubscript =
     AVarSubscriptEmpty
     | AVarSubscriptId {
-          avsidId :: String
-        , avsidIdDecs :: [Decoration]
+          avsidId :: !String
+        , avsidIdDecs :: ![Decoration]
       }
     | AVarSubscriptInt {
-          avsiInt :: Integer
-        , avsiIntDecs :: [Decoration]
+          avsiInt :: !Integer
+        , avsiIntDecs :: ![Decoration]
       }
     deriving (Show)
 
 data AExpr =
     AFalseExpr {
-        afeFalseDecs :: [Decoration]
+        afeFalseDecs :: ![Decoration]
     }
     | ATrueExpr {
-          ateTrueDecs :: [Decoration]
+          ateTrueDecs :: ![Decoration]
       }
     | AThisExpr {
-          ateThisDecs :: [Decoration]
+          ateThisDecs :: ![Decoration]
       }
     | ANewExpr {
-          aneTypeName :: ATypeName
-        , aneSizeExpr :: AExpr
-        , aneNewDecs :: [Decoration]
-        , aneLBracketDecs :: [Decoration]
-        , aneRBracketDecs :: [Decoration]
+          aneTypeName :: !ATypeName
+        , aneSizeExpr :: !AExpr
+        , aneNewDecs :: ![Decoration]
+        , aneLBracketDecs :: ![Decoration]
+        , aneRBracketDecs :: ![Decoration]
       }
     | AFloatExpr {
-          afeFloat :: Double
-        , afeFloatDecs :: [Decoration]
+          afeFloat :: !Double
+        , afeFloatDecs :: ![Decoration]
       }
     | AIntExpr {
-          aieInt :: Integer
-        , aieIntDecs :: [Decoration]
+          aieInt :: !Integer
+        , aieIntDecs :: ![Decoration]
       }
     | AStringExpr {
-          aseString :: String
-        , aseStringDecs :: [Decoration]
+          aseString :: !String
+        , aseStringDecs :: ![Decoration]
       }
     | AIdentifierExpr {
-          aieId :: String
-        , aieIdDecs :: [Decoration]
+          aieId :: !String
+        , aieIdDecs :: ![Decoration]
       }
     | AIndexExpr {
-          aieExpr :: AExpr
-        , aieIndexExpr :: AExpr
-        , aieLBracketDecs :: [Decoration]
-        , aieRBracketDecs :: [Decoration]
+          aieExpr :: !AExpr
+        , aieIndexExpr :: !AExpr
+        , aieLBracketDecs :: ![Decoration]
+        , aieRBracketDecs :: ![Decoration]
       }
     | ACallExpr {
-          aceFunctionExpr :: AExpr
-        , aceParams :: [AExpr]
-        , aceLParenDecs :: [Decoration]
-        , aceRParenDecs :: [Decoration]
-        , aceCommaDecs :: [[Decoration]]
+          aceFunctionExpr :: !AExpr
+        , aceParams :: ![AExpr]
+        , aceLParenDecs :: ![Decoration]
+        , aceRParenDecs :: ![Decoration]
+        , aceCommaDecs :: ![[Decoration]]
       }
     | AMemberExpr {
-          ameExpr :: AExpr
-        , ameMember :: String
-        , ameDotDecs :: [Decoration]
-        , ameMemberDecs :: [Decoration]
+          ameExpr :: !AExpr
+        , ameMember :: !String
+        , ameDotDecs :: ![Decoration]
+        , ameMemberDecs :: ![Decoration]
       }
     | AUnaryOpExpr {
-          auoeExpr :: AExpr
-        , auoeOp :: String
-        , auoeOpDecs :: [Decoration]
+          auoeExpr :: !AExpr
+        , auoeOp :: !String
+        , auoeOpDecs :: ![Decoration]
       }
     | APostOpExpr {
-          apoeExpr :: AExpr
-        , apoeOp :: String
-        , apoeOpDecs :: [Decoration]
+          apoeExpr :: !AExpr
+        , apoeOp :: !String
+        , apoeOpDecs :: ![Decoration]
       }
     | ABinOpExpr {
-          aboeExpr1 :: AExpr
-        , aboeExpr2 :: AExpr
-        , aboeOp :: String
-        , aboeOpDecs :: [Decoration]
+          aboeExpr1 :: !AExpr
+        , aboeExpr2 :: !AExpr
+        , aboeOp :: !String
+        , aboeOpDecs :: ![Decoration]
       }
     | AParenExpr {
-          apeExpr :: AExpr
-        , apeLParenDecs :: [Decoration]
-        , apeRParenDecs :: [Decoration]
+          apeExpr :: !AExpr
+        , apeLParenDecs :: ![Decoration]
+        , apeRParenDecs :: ![Decoration]
       }
     | ACastExpr {
-          aceTypeName :: ATypeName
-        , aceCastExpr :: AExpr
-        , aceLParenDecs :: [Decoration]
-        , aceRParenDecs :: [Decoration]
+          aceTypeName :: !ATypeName
+        , aceCastExpr :: !AExpr
+        , aceLParenDecs :: ![Decoration]
+        , aceRParenDecs :: ![Decoration]
       }
     deriving (Show)
 
 data ATypeName =
     ATypeName {
-        atnName :: String
-      , atnIsPointer :: Bool
-      , atnNameDecs :: [Decoration]
-      , atnMultDecs :: Maybe [Decoration]
+        atnName :: !String
+      , atnIsPointer :: !Bool
+      , atnNameDecs :: ![Decoration]
+      , atnMultDecs :: !(Maybe [Decoration])
     }
     deriving (Show)
 
@@ -684,7 +684,7 @@ rewriteWith r = (rewriteAst r) r
 
 -- Data.ByteString might be more performant?
 data Doc =
-    Text ([Decoration], String)
+    Text !([Decoration], String)
     | Line
     | Space
     deriving (Show, Eq)
