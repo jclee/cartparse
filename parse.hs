@@ -1,10 +1,10 @@
-import Control.Applicative hiding (many, (<|>))
 import Control.Monad
 import Control.Monad.State
 import Data.Functor.Identity
 import Data.List
 import Data.List.Split (splitOn)
 import Data.Maybe
+import Data.Monoid ((<>))
 import qualified Data.Text as T
 import System.Directory
 import System.Environment
@@ -26,14 +26,16 @@ isSourceFile :: String -> Bool
 isSourceFile s = isSuffixOf ".asc" s || isSuffixOf ".ash" s
 
 parseFile :: String -> IO ()
-parseFile file = do
-    print file
-    content <- fileContent file
+parseFile filePath = do
+    print filePath
+    content <- fileContent filePath
     let toks = cartScan content
-    let ast = parse cartParse "(parser input)" =<< toks
-    let ast2 = rewriteWith blockify <$> ast
+    let eitherAst = parse cartParse "(parser input)" =<< toks
+    let eitherAst2 = rewriteWith blockify <$> eitherAst
     --dumpToks $ take 200 <$> toks
-    putStrLn $ either show (renderToString . render) ast2
+    case eitherAst2 of
+        Left err -> putStrLn $ show err
+        Right ast2 -> writeFile (filePath <> "_b") $ renderToString $ render $ ast2
 
 getFiles :: FilePath -> IO [FilePath]
 getFiles p = filterM doesFileExist =<< getRelDirectoryContents p
