@@ -17,13 +17,13 @@ import Text.ParserCombinators.Parsec.Language (javaStyle)
 main :: IO ()
 main = do
     cartDir <- getEnv "CARTLIFE"
-    files <- sort <$> filter (isSuffixOf ".asc") <$> (getFiles cartDir)
-    --files <- sort <$> filter (isSuffixOf ".ash") <$> (getFiles cartDir)
+    files <- sort <$> filter isSourceFile <$> (getFiles cartDir)
     mapM_ parseFile files
     --let file = cartDir </> "AskOnly.asc"
-    --let file = cartDir </> "KeyboardMovement_102.asc"
-    --let file = cartDir </> "Parallax_ASH.asc"
     --parseFile file
+
+isSourceFile :: String -> Bool
+isSourceFile s = isSuffixOf ".asc" s || isSuffixOf ".ash" s
 
 parseFile :: String -> IO ()
 parseFile file = do
